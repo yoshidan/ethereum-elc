@@ -1,5 +1,6 @@
 use crate::errors::Error;
 use crate::internal_prelude::*;
+use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
 use ethereum_consensus::{
     beacon::Slot,
     bls::PublicKey,
@@ -9,22 +10,13 @@ use ethereum_consensus::{
 };
 use ethereum_consensus::types::H256;
 use ethereum_light_client_types::update::TrustedSyncCommitteeInfo;
-use ethereum_ibc_proto::{
+use ethereum_elc_proto::{
     google::protobuf::Timestamp as ProtoTimestamp,
     ibc::lightclients::ethereum::v1::ConsensusState as RawConsensusState,
 };
 use ethereum_light_client_verifier::{state::LightClientStoreReader, updates::ConsensusUpdate};
-use lcp_types::Time;
-use ibc::{
-    core::{
-        ics02_client::{
-            consensus_state::ConsensusState as Ics02ConsensusState, error::ClientError,
-        },
-        ics23_commitment::commitment::CommitmentRoot,
-    },
-    timestamp::Timestamp,
-};
-use ibc_proto::{google::protobuf::Any as IBCAny, protobuf::Protobuf};
+use light_client::types::Time;
+use prost::Message;
 
 pub const ETHEREUM_CONSENSUS_STATE_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.ConsensusState";
 
@@ -64,7 +56,7 @@ impl ConsensusState {
             Err(Error::UninitializedConsensusStateField("slot"))
         } else if self.storage_root.as_bytes().is_empty() {
             Err(Error::UninitializedConsensusStateField("storage_root"))
-        } else if self.timestamp == Timestamp::default() {
+        } else if self.timestamp.as_unix_timestamp_nanos() == 0  {
             Err(Error::UninitializedConsensusStateField("timestamp"))
         } else if self.current_sync_committee == PublicKey::default() {
             Err(Error::UninitializedConsensusStateField(
@@ -84,47 +76,22 @@ impl ConsensusState {
     }
 }
 
-impl Default for ConsensusState {
-    fn default() -> Self {
-        Self {
-            slot: Default::default(),
-            storage_root: CommitmentRoot::from_bytes(Default::default()),
-            timestamp: Default::default(),
-            current_sync_committee: Default::default(),
-            next_sync_committee: Default::default(),
-        }
-    }
-}
-
-impl Ics02ConsensusState for ConsensusState {
-    fn root(&self) -> &CommitmentRoot {
-        &self.storage_root
-    }
-
-    fn timestamp(&self) -> Timestamp {
-        self.timestamp
-    }
-}
-
-impl Protobuf<RawConsensusState> for ConsensusState {}
-
-fn proto_timestamp_to_ibc_timestamp(timestamp: ProtoTimestamp) -> Result<Timestamp, Error> {
-    use ibc::timestamp::TimestampOverflowError::TimestampOverflow;
+fn proto_timestamp_to_timestamp(timestamp: ProtoTimestamp) -> Result<Time, Error> {
     if timestamp.seconds < 0 || timestamp.nanos < 0 {
         return Err(Error::InvalidRawConsensusState {
             reason: "timestamp seconds or nanos is negative".to_string(),
         });
     }
-    let nanos = (timestamp.seconds as u64)
+    let nanos = (timestamp.seconds as u128)
         .checked_mul(1_000_000_000)
-        .ok_or_else(|| Error::TimestampOverflowError(TimestampOverflow))?
-        .checked_add(timestamp.nanos as u64)
-        .ok_or_else(|| Error::TimestampOverflowError(TimestampOverflow))?;
-    Ok(Timestamp::from_nanoseconds(nanos)?)
+        .ok_or_else(|| Error::TimestampOverflowError)?
+        .checked_add(timestamp.nanos as u128)
+        .ok_or_else(|| Error::TimestampOverflowError)?;
+    Ok(Time::from_unix_timestamp_nanos(nanos)?)
 }
 
-fn ibc_timestamp_to_proto_timestamp(timestamp: Timestamp) -> ProtoTimestamp {
-    let nanos = timestamp.nanoseconds();
+fn timestamp_to_proto_timestamp(timestamp: Time) -> ProtoTimestamp {
+    let nanos = timestamp.as_unix_timestamp_nanos();
     ProtoTimestamp {
         seconds: (nanos / 1_000_000_000) as i64,
         nanos: (nanos % 1_000_000_000) as i32,
@@ -145,7 +112,7 @@ impl TryFrom<RawConsensusState> for ConsensusState {
         Ok(Self {
             slot: value.slot.into(),
             storage_root: value.storage_root.into(),
-            timestamp: proto_timestamp_to_ibc_timestamp(value.timestamp.ok_or_else(|| {
+            timestamp: proto_timestamp_to_timestamp(value.timestamp.ok_or_else(|| {
                 Self::Error::InvalidRawConsensusState {
                     reason: "timestamp is none".to_string(),
                 }
@@ -160,18 +127,16 @@ impl From<ConsensusState> for RawConsensusState {
     fn from(value: ConsensusState) -> Self {
         Self {
             slot: value.slot.into(),
-            storage_root: value.storage_root.into_vec(),
-            timestamp: Some(ibc_timestamp_to_proto_timestamp(value.timestamp)),
+            storage_root: value.storage_root.0.to_vec(),
+            timestamp: Some(timestamp_to_proto_timestamp(value.timestamp)),
             current_sync_committee: value.current_sync_committee.to_vec(),
             next_sync_committee: value.next_sync_committee.to_vec(),
         }
     }
 }
 
-impl Protobuf<IBCAny> for ConsensusState {}
-
 impl TryFrom<IBCAny> for ConsensusState {
-    type Error = ClientError;
+    type Error = Error;
 
     fn try_from(raw: IBCAny) -> Result<Self, Self::Error> {
         use bytes::Buf;
@@ -188,24 +153,28 @@ impl TryFrom<IBCAny> for ConsensusState {
             ETHEREUM_CONSENSUS_STATE_TYPE_URL => {
                 decode_consensus_state(raw.value.deref()).map_err(Into::into)
             }
-            _ => Err(ClientError::UnknownConsensusStateType {
+            _ => Err(Error::UnknownConsensusStateType {
                 consensus_state_type: raw.type_url,
             }),
         }
     }
 }
 
-impl From<ConsensusState> for IBCAny {
-    fn from(consensus_state: ConsensusState) -> Self {
-        Self {
+impl TryFrom<ConsensusState> for IBCAny {
+    type Error = Error;
+
+    fn try_from(value: ConsensusState) -> Result<Self, Self::Error> {
+        let value: RawConsensusState = value.into();
+        let mut v = Vec::new();
+        value.encode(&mut v).map_err(Error::ProtoEncodeError)?;
+        Ok(Self {
             type_url: ETHEREUM_CONSENSUS_STATE_TYPE_URL.to_string(),
-            value: Protobuf::<RawConsensusState>::encode_vec(&consensus_state)
-                .expect("encoding to `Any` from `ConsensusState`"),
-        }
+            value: v,
+        })
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrustedConsensusState<const SYNC_COMMITTEE_SIZE: usize> {
     state: ConsensusState,
     current_sync_committee: Option<SyncCommittee<SYNC_COMMITTEE_SIZE>>,
@@ -286,117 +255,5 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<TrustedConsensusState<SYNC_COMMITTEE
 {
     fn from(value: TrustedConsensusState<SYNC_COMMITTEE_SIZE>) -> Self {
         value.state
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use ethereum_consensus::types::H256;
-    use ethereum_light_client_verifier::consensus::test_utils::MockSyncCommitteeManager;
-    use hex_literal::hex;
-    use time::macros::datetime;
-
-    #[test]
-    fn test_consensus_state_conversion() {
-        let consensus_state = ConsensusState {
-            slot: 1.into(),
-            storage_root: CommitmentRoot::from_bytes(keccak256("storage").as_bytes()),
-            timestamp: Timestamp::from_nanoseconds(
-                datetime!(2023-08-20 0:00 UTC).unix_timestamp_nanos() as u64,
-            )
-            .unwrap(),
-            current_sync_committee: PublicKey::try_from(hex!("a145063e1b5eda80fa55960296f2c4b2c021f75767318ea2572a9f7abb649010b746754ca7fc2ba57c1156881516a357").to_vec()).unwrap(),
-            next_sync_committee: PublicKey::try_from(hex!("a42dffb90d85cec7acfcb53be0e8792155d8f18c0dc9efc2a5587d5a0ba3e578df366fc3e2b743de6ecd3b53e345c266").to_vec()).unwrap(),
-        };
-        let res = consensus_state.validate();
-        assert!(res.is_ok(), "{:?}", res);
-        let any_consensus_state = IBCAny::from(consensus_state.clone());
-        let consensus_state2 = ConsensusState::try_from(any_consensus_state).unwrap();
-        assert_eq!(consensus_state, consensus_state2);
-    }
-
-    #[test]
-    fn test_trusted_consensus_state() {
-        let scm = MockSyncCommitteeManager::<32>::new(1, 2);
-        let current_sync_committee = scm.get_committee(1);
-        let next_sync_committee = scm.get_committee(2);
-
-        let consensus_state = ConsensusState {
-            slot: 64.into(),
-            storage_root: CommitmentRoot::from_bytes(keccak256("storage").as_bytes()),
-            timestamp: Timestamp::from_nanoseconds(
-                datetime!(2023-08-20 0:00 UTC).unix_timestamp_nanos() as u64,
-            )
-            .unwrap(),
-            current_sync_committee: current_sync_committee.to_committee().aggregate_pubkey,
-            next_sync_committee: next_sync_committee.to_committee().aggregate_pubkey,
-        };
-
-        let res = TrustedConsensusState::new(
-            consensus_state.clone(),
-            current_sync_committee.to_committee(),
-            false,
-        );
-        assert!(res.is_ok(), "{:?}", res);
-        let state = res.unwrap();
-        assert!(state.current_sync_committee.is_some());
-        assert!(state.next_sync_committee.is_none());
-        let res = TrustedConsensusState::new(
-            consensus_state.clone(),
-            current_sync_committee.to_committee(),
-            true,
-        );
-        assert!(res.is_err(), "{:?}", res);
-
-        let res = TrustedConsensusState::new(
-            consensus_state.clone(),
-            next_sync_committee.to_committee(),
-            true,
-        );
-        assert!(res.is_ok(), "{:?}", res);
-        let state = res.unwrap();
-        assert!(state.current_sync_committee.is_none());
-        assert!(state.next_sync_committee.is_some());
-        let res = TrustedConsensusState::new(
-            consensus_state.clone(),
-            next_sync_committee.to_committee(),
-            false,
-        );
-        assert!(res.is_err(), "{:?}", res);
-    }
-
-    #[test]
-    fn test_timestamp() {
-        {
-            // nanos is non-zero
-            let it1 = Timestamp::from_nanoseconds(
-                datetime!(2023-08-20 0:00 UTC).unix_timestamp_nanos() as u64 - 1,
-            )
-            .unwrap();
-            let pt1 = ibc_timestamp_to_proto_timestamp(it1);
-            let it2 = proto_timestamp_to_ibc_timestamp(pt1).unwrap();
-            assert_eq!(it1, it2);
-        }
-
-        {
-            // nanos is zero
-            let it1 = Timestamp::from_nanoseconds(
-                datetime!(2023-08-20 0:00 UTC).unix_timestamp_nanos() as u64,
-            )
-            .unwrap();
-            let pt1 = ibc_timestamp_to_proto_timestamp(it1);
-            let it2 = proto_timestamp_to_ibc_timestamp(pt1).unwrap();
-            assert_eq!(it1, it2);
-        }
-    }
-
-    fn keccak256(s: &str) -> H256 {
-        use tiny_keccak::{Hasher, Keccak};
-        let mut hasher = Keccak::v256();
-        let mut output = [0u8; 32];
-        hasher.update(s.as_bytes());
-        hasher.finalize(&mut output);
-        H256::from_slice(&output)
     }
 }

@@ -5,7 +5,7 @@ use light_client::types::Any;
 use crate::client_state::ClientState;
 use crate::consensus_state::ConsensusState;
 
-fn gen_state_id<const SYNC_COMMITTEE_SIZE: usize>(
+pub fn gen_state_id<const SYNC_COMMITTEE_SIZE: usize>(
     client_state: ClientState<SYNC_COMMITTEE_SIZE>,
     consensus_state: ConsensusState,
 ) -> Result<StateID, Error> {

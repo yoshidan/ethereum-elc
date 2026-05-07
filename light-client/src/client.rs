@@ -5,10 +5,7 @@ use core::str::FromStr;
 use core::time::Duration;
 use ethereum_light_client_types::client_state::ClientState as EthClientState;
 use ethereum_light_client_types::membership::{verify_membership, verify_non_membership};
-use light_client::commitments::{
-    EmittedState, MisbehaviourProxyMessage, PrevState, TrustingPeriodContext,
-    UpdateStateProxyMessage, ValidationContext, VerifyMembershipProxyMessage,
-};
+use light_client::commitments::{gen_state_id_from_any, EmittedState, MisbehaviourProxyMessage, PrevState, TrustingPeriodContext, UpdateStateProxyMessage, ValidationContext, VerifyMembershipProxyMessage};
 use light_client::ibc::IBCContext;
 use light_client::types::proto::google::protobuf::Any as IBCAny;
 use light_client::types::{Any, ClientId, Height, Time};
@@ -128,7 +125,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
                 path,
                 None,
                 proof_height,
-                ethereum_light_client_types::state::gen_state_id(client_state, consensus_state)?,
+                gen_state_id(client_state, consensus_state)?,
             ),
         })
     }
@@ -141,8 +138,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
         client_id: ClientId,
         header: Header<SYNC_COMMITTEE_SIZE>,
     ) -> Result<UpdateStateData, light_client::Error> {
-
-
+        
         let height = header.height().into();
         let trusted_height = header.trusted_height;
 

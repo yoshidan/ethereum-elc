@@ -2,6 +2,7 @@ use core::fmt::{Display, Formatter};
 use crate::internal_prelude::*;
 use light_client::LightClientSpecificError;
 use light_client::types::ClientId;
+use ethereum_consensus::bls::PublicKey;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -10,7 +11,7 @@ pub enum Error {
     UnexpectedClientType(String),
     /// time conversion error: `{0}`
     #[error("TimeConversionError(0={0})")]
-    Time(light_client::types::TimeError),
+    Time(#[from] light_client::types::TimeError),
     #[error("CannotInitializeFrozenClient")]
     CannotInitializeFrozenClient,
     #[error("EthType error: {0:?}")]
@@ -22,7 +23,7 @@ pub enum Error {
     #[error("VerificationError({0:?})")]
     VerificationError(ethereum_light_client_verifier::errors::Error),
     #[error("EthereumConsensusError({0:?})")]
-    EthereumConsensusError(ethereum_consensus::errors::Error),
+    EthereumConsensusError(#[from] ethereum_consensus::errors::Error),
     #[error("MissingTrustingPeriod")]
     MissingTrustingPeriod,
     #[error("NegativeMaxClockDrift")]
@@ -39,6 +40,23 @@ pub enum Error {
     MissingProtoField(String),
     #[error("UnexpectedStoreAddress({0:?})")]
     UnexpectedStoreAddress(ethereum_consensus::types::AddressError),
+    // ConsensusState errors
+    #[error("UninitializedConsensusStateField({0})")]
+    UninitializedConsensusStateField(&'static str),
+    #[error("InvalidRawConsensusState(reason={reason})")]
+    InvalidRawConsensusState { reason: String },
+    #[error("TimestampOverflowError")]
+    TimestampOverflowError,
+    #[error("Decode({0:?})")]
+    Decode(prost::DecodeError),
+    #[error("UnknownConsensusStateType(consensus_state_type={consensus_state_type})")]
+    UnknownConsensusStateType { consensus_state_type: String },
+    #[error("InvalidCurrentSyncCommitteeKeys(expected={0:?}, actual={1:?})")]
+    InvalidCurrentSyncCommitteeKeys(PublicKey, PublicKey),
+    #[error("InvalidNextSyncCommitteeKeys(expected={0:?}, actual={1:?})")]
+    InvalidNextSyncCommitteeKeys(PublicKey, PublicKey),
+    #[error("BlsError({0:?})")]
+    BlsError(#[from] ethereum_consensus::bls::Error),
 }
 
 impl Error {
