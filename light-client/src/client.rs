@@ -33,9 +33,11 @@ use tiny_keccak::{Hasher, Keccak};
 
 pub struct EthereumLightClient<const SYNC_COMMITTEE_SIZE: usize>;
 
+pub(crate) const ETHEREUM_CLIENT_TYPE: &str = "ethereum";
+
 impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_COMMITTEE_SIZE> {
     fn client_type(&self) -> String {
-        eth_client_type().as_str().into()
+        ETHEREUM_CLIENT_TYPE.into()
     }
 
     fn latest_height(
