@@ -253,7 +253,7 @@ dependencies = [
 [[package]]
 name = "commitments"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/lcp?rev=v0.2.12#a41fceb6d26b4f48c7a0d514e26eb199af2016e1"
+source = "git+https://github.com/datachainlab/lcp?rev=v0.2.17#a6006913123c973d4b1e8b57020df103551f122e"
 dependencies = [
  "alloy-sol-types",
  "crypto",
@@ -296,7 +296,7 @@ checksum = "7a81dae078cea95a014a339291cec439d2f232ebe854a9d672b796c6afafa9b7"
 [[package]]
 name = "crypto"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/lcp?rev=v0.2.12#a41fceb6d26b4f48c7a0d514e26eb199af2016e1"
+source = "git+https://github.com/datachainlab/lcp?rev=v0.2.17#a6006913123c973d4b1e8b57020df103551f122e"
 dependencies = [
  "flex-error",
  "hex",
@@ -496,7 +496,7 @@ dependencies = [
 [[package]]
 name = "ethereum-consensus"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.2.0#51a10e62d7fec3b7ae5a796fdc1b838393ed3e2b"
+source = "git+https://github.com/yoshidan/ethereum-light-client-rs?rev=09c47ab55096a1a70f7800515ebdbba7115034ce#09c47ab55096a1a70f7800515ebdbba7115034ce"
 dependencies = [
  "displaydoc",
  "hex",
@@ -513,15 +513,21 @@ dependencies = [
 name = "ethereum-elc"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "displaydoc",
  "ethereum-consensus",
- "ethereum-ibc",
+ "ethereum-elc-proto",
+ "ethereum-light-client-proto",
+ "ethereum-light-client-types",
  "ethereum-light-client-verifier",
+ "hex",
  "hex-literal",
- "ibc",
- "lcp-types",
  "light-client",
+ "prost",
+ "serde",
  "store",
+ "thiserror 2.0.18",
+ "time",
  "tiny-keccak",
 ]
 
@@ -536,35 +542,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ethereum-ibc"
-version = "0.1.0"
-source = "git+https://github.com/datachainlab/ethereum-ibc-rs?rev=v0.1.0#27e63e8581ecd848946709fa7dad677367bbcf69"
-dependencies = [
- "bytes",
- "displaydoc",
- "ethereum-consensus",
- "ethereum-ibc-proto",
- "ethereum-light-client-verifier",
- "hex",
- "ibc",
- "ibc-proto",
- "prost",
- "rlp",
- "serde",
- "ssz-rs",
- "tiny-keccak",
-]
-
-[[package]]
-name = "ethereum-ibc-proto"
-version = "0.1.0"
-source = "git+https://github.com/datachainlab/ethereum-ibc-rs?rev=v0.1.0#27e63e8581ecd848946709fa7dad677367bbcf69"
-dependencies = [
- "prost",
- "serde",
-]
-
-[[package]]
 name = "ethereum-light-client-proto"
 version = "0.1.0"
 dependencies = [
@@ -573,9 +550,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "ethereum-light-client-types"
+version = "0.1.0"
+dependencies = [
+ "ethereum-consensus",
+ "ethereum-light-client-proto",
+ "ethereum-light-client-verifier",
+ "hex",
+ "light-client",
+ "rlp",
+ "serde",
+ "ssz-rs",
+ "thiserror 2.0.18",
+ "tiny-keccak",
+]
+
+[[package]]
 name = "ethereum-light-client-verifier"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.2.0#51a10e62d7fec3b7ae5a796fdc1b838393ed3e2b"
+source = "git+https://github.com/yoshidan/ethereum-light-client-rs?rev=09c47ab55096a1a70f7800515ebdbba7115034ce#09c47ab55096a1a70f7800515ebdbba7115034ce"
 dependencies = [
  "displaydoc",
  "ethereum-consensus",
@@ -918,7 +911,7 @@ dependencies = [
 [[package]]
 name = "lcp-proto"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/lcp?rev=v0.2.12#a41fceb6d26b4f48c7a0d514e26eb199af2016e1"
+source = "git+https://github.com/datachainlab/lcp?rev=v0.2.17#a6006913123c973d4b1e8b57020df103551f122e"
 dependencies = [
  "ibc-proto",
  "prost",
@@ -928,7 +921,7 @@ dependencies = [
 [[package]]
 name = "lcp-types"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/lcp?rev=v0.2.12#a41fceb6d26b4f48c7a0d514e26eb199af2016e1"
+source = "git+https://github.com/datachainlab/lcp?rev=v0.2.17#a6006913123c973d4b1e8b57020df103551f122e"
 dependencies = [
  "flex-error",
  "hex",
@@ -1001,7 +994,7 @@ dependencies = [
 [[package]]
 name = "light-client"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/lcp?rev=v0.2.12#a41fceb6d26b4f48c7a0d514e26eb199af2016e1"
+source = "git+https://github.com/datachainlab/lcp?rev=v0.2.17#a6006913123c973d4b1e8b57020df103551f122e"
 dependencies = [
  "bincode",
  "commitments",
@@ -1637,7 +1630,7 @@ dependencies = [
  "serde",
  "sha2 0.9.9",
  "ssz-rs-derive",
- "thiserror",
+ "thiserror 1.0.47",
 ]
 
 [[package]]
@@ -1659,7 +1652,7 @@ checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 [[package]]
 name = "store"
 version = "0.1.0"
-source = "git+https://github.com/datachainlab/lcp?rev=v0.2.12#a41fceb6d26b4f48c7a0d514e26eb199af2016e1"
+source = "git+https://github.com/datachainlab/lcp?rev=v0.2.17#a6006913123c973d4b1e8b57020df103551f122e"
 dependencies = [
  "flex-error",
  "log",
@@ -1811,7 +1804,16 @@ version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "97a802ec30afc17eee47b2855fc72e0c4cd62be9b4efe6591edde0ec5bd68d8f"
 dependencies = [
- "thiserror-impl",
+ "thiserror-impl 1.0.47",
+]
+
+[[package]]
+name = "thiserror"
+version = "2.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4288b5bcbc7920c07a1149a35cf9590a2aa808e0bc1eafaade0b80947865fbc4"
+dependencies = [
+ "thiserror-impl 2.0.18",
 ]
 
 [[package]]
@@ -1819,6 +1821,17 @@ name = "thiserror-impl"
 version = "1.0.47"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6bb623b56e39ab7dcd4b1b98bb6c8f8d907ed255b18de254088016b27a8ee19b"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.89",
+]
+
+[[package]]
+name = "thiserror-impl"
+version = "2.0.18"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebc4ee7f67670e9b64d05fa4253e753e016c6c95ff35b89b7941d6b856dec1d5"
 dependencies = [
  "proc-macro2",
  "quote",

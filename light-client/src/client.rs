@@ -3,21 +3,8 @@ use crate::internal_prelude::*;
 use crate::state::gen_state_id;
 use core::str::FromStr;
 use core::time::Duration;
-use ethereum_ibc::client_state::ClientState;
-use ethereum_ibc::consensus_state::ConsensusState;
-use ethereum_ibc::eth_client_type;
-use ethereum_ibc::header::{ClientMessage, Header};
-use ethereum_ibc::misbehaviour::Misbehaviour;
-use ibc::core::ics02_client::client_state::{
-    downcast_client_state, ClientState as Ics02ClientState, UpdatedState,
-};
-use ibc::core::ics02_client::consensus_state::{
-    downcast_consensus_state, ConsensusState as Ics02ConsensusState,
-};
-use ibc::core::ics02_client::error::ClientError;
-use ibc::core::ics02_client::header::Header as Ics02Header;
-use ibc::core::ics23_commitment::commitment::{CommitmentPrefix, CommitmentProofBytes};
-use ibc::core::ics24_host::Path;
+use ethereum_light_client_types::client_state::ClientState as EthClientState;
+use ethereum_light_client_types::membership::{verify_membership, verify_non_membership};
 use light_client::commitments::{
     EmittedState, MisbehaviourProxyMessage, PrevState, TrustingPeriodContext,
     UpdateStateProxyMessage, ValidationContext, VerifyMembershipProxyMessage,
@@ -30,6 +17,12 @@ use light_client::{
     VerifyMembershipResult, VerifyNonMembershipResult,
 };
 use tiny_keccak::{Hasher, Keccak};
+use crate::client_state::ClientState;
+use crate::consensus_state::ConsensusState;
+use crate::header::Header;
+use crate::message::ClientMessage;
+use crate::misbehaviour::Misbehaviour;
+use ethereum_light_client_types::errors::Error as EthError;
 
 pub struct EthereumLightClient<const SYNC_COMMITTEE_SIZE: usize>;
 
@@ -45,11 +38,9 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         ctx: &dyn HostClientReader,
         client_id: &ClientId,
     ) -> Result<Height, light_client::Error> {
-        let client_state: ClientState<SYNC_COMMITTEE_SIZE> =
-            IBCAny::from(ctx.client_state(client_id)?)
-                .try_into()
-                .map_err(Error::ICS02)?;
-        Ok(client_state.latest_height().into())
+        let any_client_state = ctx.client_state(client_id)?;
+        let client_state = ClientState::try_from(any_client_state)?;
+        Ok(client_state.latest_height())
     }
 
     fn create_client(
@@ -57,22 +48,17 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         _: &dyn HostClientReader,
         any_client_state: Any,
         any_consensus_state: Any,
-    ) -> Result<light_client::CreateClientResult, light_client::Error> {
-        let any_client_state = IBCAny::from(any_client_state);
-        let any_consensus_state = IBCAny::from(any_consensus_state);
-        let client_state = ClientState::<SYNC_COMMITTEE_SIZE>::try_from(any_client_state.clone())
-            .map_err(Error::ICS02)?;
-        let consensus_state =
-            ConsensusState::try_from(any_consensus_state).map_err(Error::ICS02)?;
-        let _ = client_state
-            .initialise(consensus_state.clone().into())
-            .map_err(Error::ICS02)?;
+    ) -> Result<CreateClientResult, light_client::Error> {
+        let client_state = ClientState::try_from(any_client_state.clone())?;
+        let consensus_state = ConsensusState::try_from(any_consensus_state)?;
 
-        let height = client_state.latest_height().into();
-        let timestamp: Time = consensus_state
-            .timestamp()
-            .try_into()
-            .map_err(Error::Time)?;
+        client_state.validate()?;
+        if client_state.is_frozen() {
+            return Err(Error::CannotInitializeFrozenClient.into());
+        }
+
+        let height = client_state.latest_height();
+        let timestamp = consensus_state.timestamp;
         let state_id = gen_state_id(client_state, consensus_state)?;
         Ok(CreateClientResult {
             height,
@@ -118,34 +104,9 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         value: Vec<u8>,
         proof_height: Height,
         proof: Vec<u8>,
-    ) -> Result<light_client::VerifyMembershipResult, light_client::Error> {
-        let (client_state, consensus_state, prefix, path, proof) =
-            Self::validate_args(ctx, client_id, prefix, path, proof_height, proof)?;
-
-        client_state
-            .verify_membership(
-                proof_height.try_into().map_err(Error::ICS02)?,
-                &prefix,
-                &proof,
-                consensus_state.root(),
-                path.clone(),
-                value.clone(),
-            )
-            .map_err(|e| {
-                Error::ICS02(ClientError::ClientSpecific {
-                    description: format!("{:?}", e),
-                })
-            })?;
-
-        Ok(VerifyMembershipResult {
-            message: VerifyMembershipProxyMessage::new(
-                prefix.into_vec(),
-                path.to_string(),
-                Some(keccak256(&value)),
-                proof_height,
-                gen_state_id(client_state, consensus_state)?,
-            ),
-        })
+    ) -> Result<VerifyMembershipResult, light_client::Error> {
+        verify_membership(ctx, client_id, prefix, path, value, proof_height, proof)
+            .map_err(|e| Error::TypeError(e).into())
     }
 
     fn verify_non_membership(
@@ -156,125 +117,57 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         path: String,
         proof_height: Height,
         proof: Vec<u8>,
-    ) -> Result<light_client::VerifyNonMembershipResult, light_client::Error> {
-        let (client_state, consensus_state, prefix, path, proof) =
-            Self::validate_args(ctx, client_id, prefix, path, proof_height, proof)?;
-
-        client_state
-            .verify_non_membership(
-                proof_height.try_into().map_err(Error::ICS02)?,
-                &prefix,
-                &proof,
-                consensus_state.root(),
-                path.clone(),
-            )
-            .map_err(|e| {
-                Error::ICS02(ClientError::ClientSpecific {
-                    description: format!("{:?}", e),
-                })
-            })?;
-
+    ) -> Result<VerifyNonMembershipResult, light_client::Error> {
+        let client_state = ClientState::try_from(ctx.client_state(&client_id))?;
+        let consensus_state= ConsensusState::try_from(ctx.consensus_state(&client_id, &proof_height))?;
+        verify_non_membership(&client_state, &consensus_state, client_id, path.clone(), proof_height, proof)
+            .map_err(|e| Error::TypeError(e).into())?;
         Ok(VerifyNonMembershipResult {
             message: VerifyMembershipProxyMessage::new(
-                prefix.into_vec(),
-                path.to_string(),
+                prefix.to_vec(),
+                path,
                 None,
                 proof_height,
-                gen_state_id(client_state, consensus_state)?,
+                ethereum_light_client_types::state::gen_state_id(client_state, consensus_state)?,
             ),
         })
     }
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> {
-    fn validate_args(
-        ctx: &dyn HostClientReader,
-        client_id: ClientId,
-        counterparty_prefix: Vec<u8>,
-        path: String,
-        proof_height: Height,
-        proof: Vec<u8>,
-    ) -> Result<
-        (
-            ClientState<SYNC_COMMITTEE_SIZE>,
-            ConsensusState,
-            CommitmentPrefix,
-            Path,
-            CommitmentProofBytes,
-        ),
-        light_client::Error,
-    > {
-        let client_state: ClientState<SYNC_COMMITTEE_SIZE> =
-            IBCAny::from(ctx.client_state(&client_id)?)
-                .try_into()
-                .map_err(Error::ICS02)?;
-
-        let consensus_state: ConsensusState =
-            IBCAny::from(ctx.consensus_state(&client_id, &proof_height)?)
-                .try_into()
-                .map_err(Error::ICS02)?;
-
-        let proof: CommitmentProofBytes = proof.try_into().map_err(Error::ICS23)?;
-        let prefix: CommitmentPrefix = counterparty_prefix.try_into().map_err(Error::ICS23)?;
-        let path: Path = Path::from_str(&path).map_err(Error::ICS24Path)?;
-        Ok((client_state, consensus_state, prefix, path, proof))
-    }
-
     fn update_state(
         &self,
         ctx: &dyn HostClientReader,
         client_id: ClientId,
-        any_message: Any,
         header: Header<SYNC_COMMITTEE_SIZE>,
     ) -> Result<UpdateStateData, light_client::Error> {
-        let client_state: ClientState<SYNC_COMMITTEE_SIZE> =
-            IBCAny::from(ctx.client_state(&client_id)?)
-                .try_into()
-                .map_err(Error::ICS02)?;
+
 
         let height = header.height().into();
-        let header_timestamp: Time = header.timestamp().try_into().map_err(Error::Time)?;
-        let trusted_height = header.trusted_sync_committee.height;
+        let trusted_height = header.trusted_height;
 
-        let trusted_consensus_state: ConsensusState = IBCAny::from(
-            ctx.consensus_state(&client_id, &trusted_height.into())
-                .map_err(|_| {
-                    Error::ICS02(ClientError::ConsensusStateNotFound {
-                        client_id: client_id.clone().into(),
-                        height: trusted_height,
-                    })
-                })?,
-        )
-        .try_into()
-        .map_err(Error::ICS02)?;
+        let any_client_state = ctx.client_state(&client_id).map_err(EthError::LCPError)?;
+        let any_consensus_state = ctx
+            .consensus_state(&client_id, &trusted_height)
+            .map_err(EthError::LCPError)?;
 
-        // Use client_state to validate the new header against the latest consensus_state.
-        // This function will return the new client_state (its latest_height changed) and a
-        // consensus_state obtained from header. These will be later persisted by the keeper.
-        let UpdatedState {
-            client_state: new_client_state,
-            consensus_state: new_consensus_state,
-        } = client_state
+        //Ensure client is not frozen
+        let client_state = ClientState::<SYNC_COMMITTEE_SIZE>::try_from(any_client_state)?;
+        if client_state.is_frozen() {
+            return Err(EthError::ClientFrozen(client_id));
+        }
+
+        // Create new state and ensure header is valid
+        let trusted_consensus_state = ConsensusState::try_from(any_consensus_state)?;
+
+        let (new_client_state, new_consensus_state) = client_state
             .check_header_and_update_state(
-                &IBCContext::<ClientState<SYNC_COMMITTEE_SIZE>, ConsensusState>::new(ctx),
-                client_id.into(),
-                any_message.into(),
-            )
-            .map_err(|e| {
-                Error::ICS02(ClientError::HeaderVerificationFailure {
-                    reason: format!("{:?}", e),
-                })
-            })?;
+                ctx.host_timestamp(),
+                &trusted_consensus_state,
+                header,
+            )?;
 
-        let new_client_state =
-            downcast_client_state::<ClientState<SYNC_COMMITTEE_SIZE>>(new_client_state.as_ref())
-                .unwrap()
-                .clone();
-        let new_consensus_state =
-            downcast_consensus_state::<ConsensusState>(new_consensus_state.as_ref())
-                .unwrap()
-                .clone();
-
+        let header_timestamp = new_consensus_state.timestamp;
         let prev_state_id = gen_state_id(client_state.clone(), trusted_consensus_state.clone())?;
         let post_state_id = gen_state_id(new_client_state.clone(), new_consensus_state.clone())?;
         Ok(UpdateStateData {
@@ -397,16 +290,9 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
     }
 }
 
-fn keccak256(bz: &[u8]) -> [u8; 32] {
-    let mut hasher = Keccak::v256();
-    let mut output = [0u8; 32];
-    hasher.update(bz);
-    hasher.finalize(&mut output);
-    output
-}
-
 #[cfg(test)]
 mod tests {
+    use alloc::collections::BTreeMap;
     use super::*;
     use core::time::Duration;
     use ethereum_consensus::beacon::Version;

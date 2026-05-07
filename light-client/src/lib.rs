@@ -3,14 +3,21 @@
 #![allow(clippy::large_enum_variant)]
 
 use client::EthereumLightClient;
-use ethereum_ibc::client_state::ETHEREUM_CLIENT_STATE_TYPE_URL;
 use light_client::LightClientRegistry;
 extern crate alloc;
 
 pub mod client;
 pub mod errors;
 pub mod state;
-pub use ethereum_ibc as ibc;
+
+pub mod client_state;
+pub mod consensus_state;
+
+pub mod header;
+pub mod message;
+
+pub mod misbehaviour;
+
 
 #[allow(unused_imports)]
 mod internal_prelude {
@@ -21,6 +28,7 @@ mod internal_prelude {
     pub use alloc::vec::Vec;
 }
 use internal_prelude::*;
+use crate::client_state::ETHEREUM_CLIENT_STATE_TYPE_URL;
 
 pub fn register_implementations<const SYNC_COMMITTEE_SIZE: usize>(
     registry: &mut dyn LightClientRegistry,
