@@ -19,6 +19,7 @@ use ethereum_elc_proto::ibc::lightclients::ethereum::v1::{
 use ethereum_light_client_proto::ibc::lightclients::ethereum::v1::{
     Fork as RawFork, ForkSpec as RawForkSpec,
 };
+use ethereum_light_client_types::commitment::verify_account_storage;
 use ethereum_light_client_verifier::consensus::SyncProtocolVerifier;
 use ethereum_light_client_verifier::context::{
     ChainConsensusVerificationContext, Fraction, LightClientContext,
@@ -39,7 +40,7 @@ pub const ETHEREUM_CLIENT_REVISION_NUMBER: u64 = 0;
 pub const ETHEREUM_CLIENT_STATE_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.ClientState";
 pub const ETHEREUM_ACCOUNT_STORAGE_ROOT_INDEX: usize = 2;
 
-#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
     // Verification parameters
     /// `genesis_validators_root` of the target beacon chain's BeaconState
@@ -75,13 +76,6 @@ pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
     pub latest_execution_block_number: U64,
     /// `frozen_height` is the height at which the client is considered frozen. If `None`, the client is unfrozen.
     pub frozen_height: Option<Height>,
-
-    // Verifiers
-    #[serde(skip)]
-    pub consensus_verifier:
-        SyncProtocolVerifier<SYNC_COMMITTEE_SIZE, TrustedConsensusState<SYNC_COMMITTEE_SIZE>>,
-    #[serde(skip)]
-    pub execution_verifier: ExecutionVerifier,
 }
 
 impl <const SYNC_COMMITTEE_SIZE: usize > EthClientState for ClientState<SYNC_COMMITTEE_SIZE> {
@@ -126,7 +120,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             self.genesis_validators_root,
             self.min_sync_committee_participants.0 as usize,
             self.trust_level.clone(),
-            current_timestamp.into(),
+            current_timestamp.as_unix_timestamp_secs().into(),
         )
     }
 
@@ -189,7 +183,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         let account_update = header.account_update;
         let header_timestamp = header.timestamp;
 
-        self.consensus_verifier
+        SyncProtocolVerifier::<SYNC_COMMITTEE_SIZE, TrustedConsensusState<SYNC_COMMITTEE_SIZE>>::default()
             .validate_updates(
                 &cc,
                 &trusted_consensus_state,
@@ -198,7 +192,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             )
             .map_err(Error::VerificationError)?;
 
-        self.verify_account_storage(execution_update.state_root, &account_update)?;
+        verify_account_storage(&ExecutionVerifier, execution_update.state_root, &self.ibc_address, &account_update)?;
 
         // check if the current timestamp is within the trusting period
         validate_state_timestamp_within_trusting_period(
@@ -215,7 +209,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
 
         let new_sync_committee = apply_updates(
             &cc,
-            &consensus_state,
+            consensus_state,
             consensus_update,
         )?;
 
@@ -245,7 +239,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         }
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(misbehaviour)?;
         misbehaviour.validate()?;
-        if misbehaviour.client_id != client_id {
+        if &misbehaviour.client_id != client_id {
             return Err(
                 Error::UnexpectedClientIdInMisbehaviour(*client_id, misbehaviour.client_id).into(),
             );
@@ -341,7 +335,7 @@ for ClientState<SYNC_COMMITTEE_SIZE>
             seconds_per_slot: value.seconds_per_slot.into(),
             slots_per_epoch: value.slots_per_epoch.into(),
             epochs_per_sync_committee_period: value.epochs_per_sync_committee_period.into(),
-            ibc_address: value.ibc_address.as_slice().try_into().map_err(Error::UnexpectedStoreAddress)?,
+            ibc_address: value.ibc_address.as_slice().try_into().map_err(|e| Error::UnexpectedStoreAddress(format!("{:?}", e)))?,
             ibc_commitments_slot: H256::from_slice(&value.ibc_commitments_slot),
             trust_level: Fraction::new(trust_level.numerator, trust_level.denominator)
                 .map_err(Error::VerificationError)?,
@@ -414,8 +408,8 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<ClientState<SYNC_COMMITTEE_SIZE>> fo
                 numerator: value.trust_level.numerator(),
                 denominator: value.trust_level.denominator(),
             }),
-            trusting_period: Some(value.trusting_period.into()),
-            max_clock_drift: Some(value.max_clock_drift.into()),
+            trusting_period: Some(prost_types::Duration::from(value.trusting_period)),
+            max_clock_drift: Some(prost_types::Duration::from(value.max_clock_drift)),
             latest_execution_block_number: value.latest_execution_block_number.into(),
             frozen_height: value.frozen_height.map(|h| ProtoHeight {
                 revision_number: h.revision_number(),

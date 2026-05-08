@@ -13,6 +13,7 @@ ethereum-light-client-proto = { path = "../../ethereum-light-client-types/proto"
 ethereum-light-client-types = { path = "../../ethereum-light-client-types/type", default-features = false }
 ethereum-light-client-verifier = { git = "https://github.com/yoshidan/ethereum-light-client-rs", rev = "09c47ab55096a1a70f7800515ebdbba7115034ce", default-features = false }
 prost = "0.11.9"
+prost-types = { version = "0.11", default-features = false }
 serde = { version = "1.0.186", features = ["derive"] }
 hex = "0.4.3"
 bytes = "1.4.0"

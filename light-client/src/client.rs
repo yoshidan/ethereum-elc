@@ -16,8 +16,7 @@ use light_client::{
 use tiny_keccak::{Hasher, Keccak};
 use crate::client_state::ClientState;
 use crate::consensus_state::ConsensusState;
-use crate::header::Header;
-use crate::message::ClientMessage;
+use crate::header::{ClientMessage, Header};
 use crate::misbehaviour::Misbehaviour;
 use ethereum_light_client_types::errors::Error as EthError;
 
@@ -36,7 +35,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         client_id: &ClientId,
     ) -> Result<Height, light_client::Error> {
         let any_client_state = ctx.client_state(client_id)?;
-        let client_state = ClientState::try_from(any_client_state)?;
+        let client_state = ClientState::<SYNC_COMMITTEE_SIZE>::try_from(any_client_state)?;
         Ok(client_state.latest_height())
     }
 
@@ -138,7 +137,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
         client_id: ClientId,
         header: Header<SYNC_COMMITTEE_SIZE>,
     ) -> Result<UpdateStateData, light_client::Error> {
-        
+
         let height = header.height().into();
         let trusted_height = header.trusted_height;
 

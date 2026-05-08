@@ -15,8 +15,9 @@ use ethereum_elc_proto::{
     ibc::lightclients::ethereum::v1::ConsensusState as RawConsensusState,
 };
 use ethereum_light_client_verifier::{state::LightClientStoreReader, updates::ConsensusUpdate};
-use light_client::types::Time;
+use light_client::types::{Any, Time};
 use prost::Message;
+use prost_types::Timestamp;
 
 pub const ETHEREUM_CONSENSUS_STATE_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.ConsensusState";
 
@@ -76,23 +77,9 @@ impl ConsensusState {
     }
 }
 
-fn proto_timestamp_to_timestamp(timestamp: ProtoTimestamp) -> Result<Time, Error> {
-    if timestamp.seconds < 0 || timestamp.nanos < 0 {
-        return Err(Error::InvalidRawConsensusState {
-            reason: "timestamp seconds or nanos is negative".to_string(),
-        });
-    }
-    let nanos = (timestamp.seconds as u128)
-        .checked_mul(1_000_000_000)
-        .ok_or_else(|| Error::TimestampOverflowError)?
-        .checked_add(timestamp.nanos as u128)
-        .ok_or_else(|| Error::TimestampOverflowError)?;
-    Ok(Time::from_unix_timestamp_nanos(nanos)?)
-}
-
-fn timestamp_to_proto_timestamp(timestamp: Time) -> ProtoTimestamp {
+fn timestamp_to_proto_timestamp(timestamp: Time) -> Timestamp {
     let nanos = timestamp.as_unix_timestamp_nanos();
-    ProtoTimestamp {
+    Timestamp {
         seconds: (nanos / 1_000_000_000) as i64,
         nanos: (nanos % 1_000_000_000) as i32,
     }
@@ -109,14 +96,15 @@ impl TryFrom<RawConsensusState> for ConsensusState {
         } else {
             PublicKey::try_from(value.next_sync_committee)?
         };
+        let timestamp = value.timestamp.ok_or_else(|| {
+            Error::InvalidRawConsensusState {
+                reason: "timestamp is none".to_string(),
+            }
+        })?;
         Ok(Self {
             slot: value.slot.into(),
-            storage_root: value.storage_root.into(),
-            timestamp: proto_timestamp_to_timestamp(value.timestamp.ok_or_else(|| {
-                Self::Error::InvalidRawConsensusState {
-                    reason: "timestamp is none".to_string(),
-                }
-            })?)?,
+            storage_root: H256::from_slice(value.storage_root.as_slice()),
+            timestamp: Time::from_unix_timestamp(timestamp.seconds, timestamp.nanos as u32)?,
             current_sync_committee: PublicKey::try_from(value.current_sync_committee)?,
             next_sync_committee,
         })
@@ -171,6 +159,13 @@ impl TryFrom<ConsensusState> for IBCAny {
             type_url: ETHEREUM_CONSENSUS_STATE_TYPE_URL.to_string(),
             value: v,
         })
+    }
+}
+
+impl TryFrom<ConsensusState> for Any {
+    type Error = Error;
+    fn try_from(value: ConsensusState) -> Result<Self, Error> {
+        Ok(IBCAny::try_from(value)?.into())
     }
 }
 
