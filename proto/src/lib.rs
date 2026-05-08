@@ -9,9 +9,9 @@
 #![allow(rustdoc::bare_urls)]
 #![forbid(unsafe_code)]
 
+pub use ethereum_light_client_proto;
 pub use ibc_proto::cosmos;
 pub use ibc_proto::google;
-pub use ethereum_light_client_proto;
 
 extern crate alloc;
 

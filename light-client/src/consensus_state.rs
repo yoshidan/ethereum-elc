@@ -1,6 +1,6 @@
 use crate::errors::Error;
 use crate::internal_prelude::*;
-use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
+use ethereum_consensus::types::H256;
 use ethereum_consensus::{
     beacon::Slot,
     bls::PublicKey,
@@ -8,13 +8,13 @@ use ethereum_consensus::{
     context::ChainContext,
     sync_protocol::{SyncCommittee, SyncCommitteePeriod},
 };
-use ethereum_consensus::types::H256;
-use ethereum_light_client_types::update::TrustedSyncCommitteeInfo;
-use ethereum_light_client_types::consensus_state::ConsensusState as EthConsensusState;
 use ethereum_elc_proto::{
     google::protobuf::Timestamp as ProtoTimestamp,
     ibc::lightclients::ethereum::v1::ConsensusState as RawConsensusState,
 };
+use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
+use ethereum_light_client_types::consensus_state::ConsensusState as EthConsensusState;
+use ethereum_light_client_types::update::TrustedSyncCommitteeInfo;
 use ethereum_light_client_verifier::{state::LightClientStoreReader, updates::ConsensusUpdate};
 use light_client::types::{Any, Time};
 use prost::Message;
@@ -49,7 +49,7 @@ impl Default for ConsensusState {
     }
 }
 
-impl <CC:ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
+impl<CC: ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
     fn current_period(&self, ctx: &CC) -> SyncCommitteePeriod {
         compute_sync_committee_period_at_slot(ctx, self.slot)
     }
@@ -65,7 +65,7 @@ impl <CC:ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
 
 impl EthConsensusState for ConsensusState {
     fn storage_root(&self) -> H256 {
-        self.storage_root.clone()
+        self.storage_root
     }
 }
 
@@ -75,7 +75,7 @@ impl ConsensusState {
             Err(Error::UninitializedConsensusStateField("slot"))
         } else if self.storage_root.as_bytes().is_empty() {
             Err(Error::UninitializedConsensusStateField("storage_root"))
-        } else if self.timestamp.as_unix_timestamp_nanos() == 0  {
+        } else if self.timestamp.as_unix_timestamp_nanos() == 0 {
             Err(Error::UninitializedConsensusStateField("timestamp"))
         } else if self.current_sync_committee == PublicKey::default() {
             Err(Error::UninitializedConsensusStateField(
@@ -114,11 +114,11 @@ impl TryFrom<RawConsensusState> for ConsensusState {
         } else {
             PublicKey::try_from(value.next_sync_committee)?
         };
-        let timestamp = value.timestamp.ok_or_else(|| {
-            Error::InvalidRawConsensusState {
+        let timestamp = value
+            .timestamp
+            .ok_or_else(|| Error::InvalidRawConsensusState {
                 reason: "timestamp is none".to_string(),
-            }
-        })?;
+            })?;
         Ok(Self {
             slot: value.slot.into(),
             storage_root: H256::from_slice(value.storage_root.as_slice()),
@@ -156,9 +156,7 @@ impl TryFrom<IBCAny> for ConsensusState {
         }
 
         match raw.type_url.as_str() {
-            ETHEREUM_CONSENSUS_STATE_TYPE_URL => {
-                decode_consensus_state(raw.value.deref()).map_err(Into::into)
-            }
+            ETHEREUM_CONSENSUS_STATE_TYPE_URL => decode_consensus_state(raw.value.deref()),
             _ => Err(Error::UnknownConsensusStateType {
                 consensus_state_type: raw.type_url,
             }),
@@ -194,7 +192,6 @@ impl TryFrom<Any> for ConsensusState {
         IBCAny::from(any).try_into()
     }
 }
-
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TrustedConsensusState<const SYNC_COMMITTEE_SIZE: usize> {

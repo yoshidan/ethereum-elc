@@ -1,5 +1,4 @@
 use crate::errors::Error;
-use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
 use crate::misbehaviour::{
     Misbehaviour, ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
     ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
@@ -8,11 +7,15 @@ use bytes::Buf;
 use ethereum_consensus::compute::compute_timestamp_at_slot;
 use ethereum_consensus::context::ChainContext;
 use ethereum_consensus::types::U64;
-use ethereum_light_client_types::consensus::{convert_consensus_update_to_proto, convert_execution_update_to_proto, convert_proto_to_consensus_update, convert_proto_to_execution_update, AccountUpdateInfo, ConsensusUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee};
+use ethereum_elc_proto::ibc::lightclients::ethereum::v1::Header as RawHeader;
+use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
+use ethereum_light_client_types::consensus::{
+    convert_proto_to_consensus_update, convert_proto_to_execution_update, AccountUpdateInfo,
+    ConsensusUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee,
+};
 use ethereum_light_client_types::time::new_timestamp;
 use ethereum_light_client_verifier::updates::ConsensusUpdate;
 use light_client::types::Time;
-use ethereum_elc_proto::ibc::lightclients::ethereum::v1::Header as RawHeader;
 use prost::Message;
 
 pub const ETHEREUM_HEADER_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.Header";
@@ -73,7 +76,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
             return Err(Error::ZeroBlockNumberError);
         }
         let header_timestamp_nanos = self.timestamp.as_unix_timestamp_nanos();
-        let spec_timestamp_nanos= new_timestamp(compute_timestamp_at_slot(ctx, self.consensus_update.finalized_beacon_header().slot).0)?.as_unix_timestamp_nanos();
+        let spec_timestamp_nanos = new_timestamp(
+            compute_timestamp_at_slot(ctx, self.consensus_update.finalized_beacon_header().slot).0,
+        )?
+        .as_unix_timestamp_nanos();
         if header_timestamp_nanos != spec_timestamp_nanos {
             return Err(Error::UnexpectedTimestamp(
                 spec_timestamp_nanos,
@@ -117,7 +123,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Header<SYNC_COMMITTEE
         use core::ops::Deref;
 
         match raw.type_url.as_str() {
-            ETHEREUM_HEADER_TYPE_URL => decode_header(raw.value.deref()).map_err(Into::into),
+            ETHEREUM_HEADER_TYPE_URL => decode_header(raw.value.deref()),
             _ => Err(Error::UnknownHeaderType {
                 header_type: raw.type_url,
             }),

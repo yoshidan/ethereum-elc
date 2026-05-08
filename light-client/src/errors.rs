@@ -1,7 +1,7 @@
 use crate::internal_prelude::*;
-use light_client::LightClientSpecificError;
-use light_client::types::ClientId;
 use ethereum_consensus::bls::PublicKey;
+use light_client::types::ClientId;
+use light_client::LightClientSpecificError;
 
 #[derive(thiserror::Error, Debug)]
 pub enum Error {
@@ -110,4 +110,3 @@ impl From<light_client::Error> for Error {
         Error::LightClientError(e)
     }
 }
-

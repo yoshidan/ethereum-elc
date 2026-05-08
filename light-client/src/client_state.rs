@@ -1,25 +1,26 @@
-use alloc::format;
-use alloc::string::ToString;
-use alloc::vec::Vec;
 use crate::consensus_state::{ConsensusState, TrustedConsensusState};
 use crate::errors::Error;
 use crate::header::Header;
 use crate::misbehaviour::Misbehaviour;
+use alloc::format;
+use alloc::string::ToString;
+use alloc::vec::Vec;
 use core::time::Duration;
 use ethereum_consensus::beacon::{Epoch, Root, Slot, Version};
 use ethereum_consensus::fork::{ForkParameter, ForkParameters, ForkSpec, BELLATRIX_INDEX};
 use ethereum_consensus::types::{Address, H256, U64};
+use ethereum_elc_proto::ibc::lightclients::ethereum::v1::ClientState as RawClientState;
 use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
-use ethereum_light_client_types::client_state::ClientState as EthClientState;
-use ethereum_light_client_types::consensus::AccountUpdateInfo;
-use ethereum_light_client_types::update::apply_updates;
-use ethereum_elc_proto::ibc::lightclients::ethereum::v1::{
-    ClientState as RawClientState,
-};
 use ethereum_light_client_proto::ibc::lightclients::ethereum::v1::{
     Fork as RawFork, ForkSpec as RawForkSpec,
 };
+use ethereum_light_client_types::client_state::ClientState as EthClientState;
 use ethereum_light_client_types::commitment::verify_account_storage;
+use ethereum_light_client_types::errors::Error as EthError;
+use ethereum_light_client_types::time::{
+    validate_header_timestamp_not_future, validate_state_timestamp_within_trusting_period,
+};
+use ethereum_light_client_types::update::compute_sync_committees;
 use ethereum_light_client_verifier::consensus::SyncProtocolVerifier;
 use ethereum_light_client_verifier::context::{
     ChainConsensusVerificationContext, Fraction, LightClientContext,
@@ -28,9 +29,6 @@ use ethereum_light_client_verifier::execution::ExecutionVerifier;
 use light_client::types::{Any, ClientId, Height, Time};
 use prost::Message;
 use serde::{Deserialize, Serialize};
-use tiny_keccak::{Hasher, Keccak};
-use ethereum_light_client_types::errors::Error as EthError;
-use ethereum_light_client_types::time::{validate_header_timestamp_not_future, validate_state_timestamp_within_trusting_period};
 
 /// The revision number for the Ethereum light client is always 0.
 ///
@@ -85,13 +83,16 @@ pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
     pub execution_verifier: ExecutionVerifier,
 }
 
-impl <const SYNC_COMMITTEE_SIZE: usize > EthClientState for ClientState<SYNC_COMMITTEE_SIZE> {
+impl<const SYNC_COMMITTEE_SIZE: usize> EthClientState for ClientState<SYNC_COMMITTEE_SIZE> {
     fn is_frozen(&self) -> bool {
         self.frozen_height.is_some()
     }
 
     fn latest_height(&self) -> Height {
-        Height::new(ETHEREUM_CLIENT_REVISION_NUMBER, self.latest_execution_block_number.into())
+        Height::new(
+            ETHEREUM_CLIENT_REVISION_NUMBER,
+            self.latest_execution_block_number.into(),
+        )
     }
 
     fn ibc_commitments_slot(&self) -> H256 {
@@ -114,10 +115,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         }
     }
 
-    pub fn build_context(
-        &self,
-        current_timestamp: Time,
-    ) -> impl ChainConsensusVerificationContext {
+    pub fn build_context(&self, current_timestamp: Time) -> impl ChainConsensusVerificationContext {
         LightClientContext::new(
             self.fork_parameters.clone(),
             self.seconds_per_slot,
@@ -169,7 +167,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         }
     }
 
-    pub fn check_header_and_update_state (
+    pub fn check_header_and_update_state(
         &self,
         now: Time,
         consensus_state: &ConsensusState,
@@ -198,7 +196,12 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             )
             .map_err(Error::VerificationError)?;
 
-        verify_account_storage(&self.execution_verifier, execution_update.state_root, &self.ibc_address, &account_update)?;
+        verify_account_storage(
+            &self.execution_verifier,
+            execution_update.state_root,
+            &self.ibc_address,
+            &account_update,
+        )?;
 
         // check if the current timestamp is within the trusting period
         validate_state_timestamp_within_trusting_period(
@@ -207,23 +210,15 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             consensus_state.timestamp,
         )?;
         // check if the header timestamp does not indicate a future time
-        validate_header_timestamp_not_future(
-            now,
-            self.max_clock_drift,
-            header_timestamp,
-        )?;
+        validate_header_timestamp_not_future(now, self.max_clock_drift, header_timestamp)?;
 
-        let new_sync_committee = apply_updates(
-            &cc,
-            consensus_state,
-            consensus_update,
-        )?;
+        let new_sync_committee = compute_sync_committees(&cc, consensus_state, consensus_update)?;
 
-        let mut new_client_state : ClientState<SYNC_COMMITTEE_SIZE>= self.clone();
-        if new_client_state.latest_execution_block_number < execution_update.block_number{
+        // apply updates to state
+        let mut new_client_state: ClientState<SYNC_COMMITTEE_SIZE> = self.clone();
+        if new_client_state.latest_execution_block_number < execution_update.block_number {
             new_client_state.latest_execution_block_number = execution_update.block_number;
         }
-
         let mut new_consensus_state = consensus_state.clone();
         new_consensus_state.storage_root = execution_update.state_root;
         new_consensus_state.timestamp = header_timestamp;
@@ -242,9 +237,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
     ) -> Result<ClientState<SYNC_COMMITTEE_SIZE>, Error> {
         misbehaviour.validate()?;
         if &misbehaviour.client_id != client_id {
-            return Err(
-                Error::UnexpectedClientIdInMisbehaviour(client_id.clone(), misbehaviour.client_id),
-            );
+            return Err(Error::UnexpectedClientIdInMisbehaviour(
+                client_id.clone(),
+                misbehaviour.client_id,
+            ));
         }
 
         let cc = self.build_context(now);
@@ -269,11 +265,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             .clone()
             .with_frozen_height(misbehaviour.trusted_sync_committee.height))
     }
-
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
-for ClientState<SYNC_COMMITTEE_SIZE>
+    for ClientState<SYNC_COMMITTEE_SIZE>
 {
     type Error = Error;
 
@@ -320,15 +315,13 @@ for ClientState<SYNC_COMMITTEE_SIZE>
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         )
-            .map_err(Error::EthereumConsensusError)?;
+        .map_err(Error::EthereumConsensusError)?;
         let trust_level = value
             .trust_level
             .ok_or(Error::proto_missing("trust_level"))?;
-        let frozen_height = if let Some(h) = value.frozen_height {
-            Some(Height::new(h.revision_number, h.revision_height))
-        } else {
-            None
-        };
+        let frozen_height = value
+            .frozen_height
+            .map(|h| Height::new(h.revision_number, h.revision_height));
         Ok(Self {
             genesis_validators_root: H256::from_slice(&value.genesis_validators_root),
             min_sync_committee_participants: value.min_sync_committee_participants.into(),
@@ -337,7 +330,11 @@ for ClientState<SYNC_COMMITTEE_SIZE>
             seconds_per_slot: value.seconds_per_slot.into(),
             slots_per_epoch: value.slots_per_epoch.into(),
             epochs_per_sync_committee_period: value.epochs_per_sync_committee_period.into(),
-            ibc_address: value.ibc_address.as_slice().try_into().map_err(|e| Error::UnexpectedStoreAddress(format!("{:?}", e)))?,
+            ibc_address: value
+                .ibc_address
+                .as_slice()
+                .try_into()
+                .map_err(|e| Error::UnexpectedStoreAddress(format!("{:?}", e)))?,
             ibc_commitments_slot: H256::from_slice(&value.ibc_commitments_slot),
             trust_level: Fraction::new(trust_level.numerator, trust_level.denominator)
                 .map_err(Error::VerificationError)?,

@@ -16,7 +16,6 @@ pub mod consensus_state;
 pub mod header;
 pub mod misbehaviour;
 
-
 #[allow(unused_imports)]
 mod internal_prelude {
     pub use alloc::boxed::Box;
@@ -25,8 +24,8 @@ mod internal_prelude {
     pub use alloc::vec;
     pub use alloc::vec::Vec;
 }
-use internal_prelude::*;
 use crate::client_state::ETHEREUM_CLIENT_STATE_TYPE_URL;
+use internal_prelude::*;
 
 pub fn register_implementations<const SYNC_COMMITTEE_SIZE: usize>(
     registry: &mut dyn LightClientRegistry,

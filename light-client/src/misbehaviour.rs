@@ -1,19 +1,20 @@
-use crate::{
-    errors::Error,
-};
+use crate::errors::Error;
 use alloc::string::ToString;
 use bytes::Buf;
 use core::str::FromStr;
-use ethereum_light_client_types::consensus::{convert_consensus_update_to_proto, convert_proto_to_consensus_update, ConsensusUpdateInfo, TrustedSyncCommittee};
 use ethereum_elc_proto::ibc::lightclients::ethereum::v1::{
     FinalizedHeaderMisbehaviour as RawFinalizedHeaderMisbehaviour,
     NextSyncCommitteeMisbehaviour as RawNextSyncCommitteeMisbehaviour,
+};
+use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
+use ethereum_light_client_types::consensus::{
+    convert_consensus_update_to_proto, convert_proto_to_consensus_update, ConsensusUpdateInfo,
+    TrustedSyncCommittee,
 };
 use ethereum_light_client_verifier::misbehaviour::{
     FinalizedHeaderMisbehaviour, Misbehaviour as MisbehaviourData, NextSyncCommitteeMisbehaviour,
 };
 use light_client::types::ClientId;
-use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
 use prost::Message;
 use serde::{Deserialize, Serialize};
 
@@ -135,10 +136,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Misbehaviour<SYNC_COM
 
         match raw.type_url.as_str() {
             ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL => {
-                decode_finalized_header_misbehaviour(raw.value.deref()).map_err(Into::into)
+                decode_finalized_header_misbehaviour(raw.value.deref())
             }
             ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL => {
-                decode_next_sync_committee_misbehaviour(raw.value.deref()).map_err(Into::into)
+                decode_next_sync_committee_misbehaviour(raw.value.deref())
             }
             _ => Err(Error::UnknownMisbehaviourType {
                 misbehaviour_type: raw.type_url,
