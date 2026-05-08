@@ -39,6 +39,8 @@ pub enum Error {
     MissingProtoField(String),
     #[error("UnexpectedStoreAddress({0})")]
     UnexpectedStoreAddress(String),
+    #[error("client is frozen: client_id={0}")]
+    ClientFrozen(ClientId),
     // ConsensusState errors
     #[error("UninitializedConsensusStateField({0})")]
     UninitializedConsensusStateField(&'static str),
@@ -73,6 +75,8 @@ pub enum Error {
     UnknownMisbehaviourType { misbehaviour_type: String },
     #[error("ClientIdParseError({0})")]
     ClientIdParseError(light_client::types::TypeError),
+    #[error("LightClientError({0})")]
+    LightClientError(light_client::Error),
 }
 
 impl Error {
@@ -98,6 +102,12 @@ impl From<ethereum_consensus::errors::Error> for Error {
 impl From<light_client::types::TypeError> for Error {
     fn from(e: light_client::types::TypeError) -> Self {
         Error::ClientIdParseError(e)
+    }
+}
+
+impl From<light_client::Error> for Error {
+    fn from(e: light_client::Error) -> Self {
+        Error::LightClientError(e)
     }
 }
 

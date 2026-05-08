@@ -10,6 +10,7 @@ use ethereum_consensus::{
 };
 use ethereum_consensus::types::H256;
 use ethereum_light_client_types::update::TrustedSyncCommitteeInfo;
+use ethereum_light_client_types::consensus_state::ConsensusState as EthConsensusState;
 use ethereum_elc_proto::{
     google::protobuf::Timestamp as ProtoTimestamp,
     ibc::lightclients::ethereum::v1::ConsensusState as RawConsensusState,
@@ -17,7 +18,6 @@ use ethereum_elc_proto::{
 use ethereum_light_client_verifier::{state::LightClientStoreReader, updates::ConsensusUpdate};
 use light_client::types::{Any, Time};
 use prost::Message;
-use prost_types::Timestamp;
 
 pub const ETHEREUM_CONSENSUS_STATE_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.ConsensusState";
 
@@ -37,6 +37,18 @@ pub struct ConsensusState {
     pub next_sync_committee: PublicKey,
 }
 
+impl Default for ConsensusState {
+    fn default() -> Self {
+        Self {
+            slot: Default::default(),
+            storage_root: Default::default(),
+            timestamp: Time::from_unix_timestamp_nanos(0).unwrap(),
+            current_sync_committee: Default::default(),
+            next_sync_committee: Default::default(),
+        }
+    }
+}
+
 impl <CC:ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
     fn current_period(&self, ctx: &CC) -> SyncCommitteePeriod {
         compute_sync_committee_period_at_slot(ctx, self.slot)
@@ -48,6 +60,12 @@ impl <CC:ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
 
     fn next_sync_committee(&self) -> PublicKey {
         self.next_sync_committee.clone()
+    }
+}
+
+impl EthConsensusState for ConsensusState {
+    fn storage_root(&self) -> H256 {
+        self.storage_root.clone()
     }
 }
 
@@ -77,9 +95,9 @@ impl ConsensusState {
     }
 }
 
-fn timestamp_to_proto_timestamp(timestamp: Time) -> Timestamp {
+fn timestamp_to_proto_timestamp(timestamp: Time) -> ProtoTimestamp {
     let nanos = timestamp.as_unix_timestamp_nanos();
-    Timestamp {
+    ProtoTimestamp {
         seconds: (nanos / 1_000_000_000) as i64,
         nanos: (nanos % 1_000_000_000) as i32,
     }
@@ -169,7 +187,16 @@ impl TryFrom<ConsensusState> for Any {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+impl TryFrom<Any> for ConsensusState {
+    type Error = Error;
+
+    fn try_from(any: Any) -> Result<Self, Self::Error> {
+        IBCAny::from(any).try_into()
+    }
+}
+
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct TrustedConsensusState<const SYNC_COMMITTEE_SIZE: usize> {
     state: ConsensusState,
     current_sync_committee: Option<SyncCommittee<SYNC_COMMITTEE_SIZE>>,

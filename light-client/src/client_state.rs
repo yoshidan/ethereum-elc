@@ -40,7 +40,7 @@ pub const ETHEREUM_CLIENT_REVISION_NUMBER: u64 = 0;
 pub const ETHEREUM_CLIENT_STATE_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.ClientState";
 pub const ETHEREUM_ACCOUNT_STORAGE_ROOT_INDEX: usize = 2;
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
     // Verification parameters
     /// `genesis_validators_root` of the target beacon chain's BeaconState
@@ -76,6 +76,13 @@ pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
     pub latest_execution_block_number: U64,
     /// `frozen_height` is the height at which the client is considered frozen. If `None`, the client is unfrozen.
     pub frozen_height: Option<Height>,
+
+    // Verifiers
+    #[serde(skip)]
+    pub consensus_verifier:
+        SyncProtocolVerifier<SYNC_COMMITTEE_SIZE, TrustedConsensusState<SYNC_COMMITTEE_SIZE>>,
+    #[serde(skip)]
+    pub execution_verifier: ExecutionVerifier,
 }
 
 impl <const SYNC_COMMITTEE_SIZE: usize > EthClientState for ClientState<SYNC_COMMITTEE_SIZE> {
@@ -169,7 +176,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         header: Header<SYNC_COMMITTEE_SIZE>,
     ) -> Result<(ClientState<SYNC_COMMITTEE_SIZE>, ConsensusState), Error> {
         let cc = self.build_context(now);
-        let header = Header::<SYNC_COMMITTEE_SIZE>::try_from(header)?;
         header.validate(&cc)?;
 
         let trusted_sync_committee = header.trusted_sync_committee;
@@ -183,7 +189,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         let account_update = header.account_update;
         let header_timestamp = header.timestamp;
 
-        SyncProtocolVerifier::<SYNC_COMMITTEE_SIZE, TrustedConsensusState<SYNC_COMMITTEE_SIZE>>::default()
+        self.consensus_verifier
             .validate_updates(
                 &cc,
                 &trusted_consensus_state,
@@ -192,7 +198,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             )
             .map_err(Error::VerificationError)?;
 
-        verify_account_storage(&ExecutionVerifier, execution_update.state_root, &self.ibc_address, &account_update)?;
+        verify_account_storage(&self.execution_verifier, execution_update.state_root, &self.ibc_address, &account_update)?;
 
         // check if the current timestamp is within the trusting period
         validate_state_timestamp_within_trusting_period(
@@ -227,21 +233,17 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         Ok((new_client_state, new_consensus_state))
     }
 
-    fn check_misbehaviour_and_update_state(
+    pub fn check_misbehaviour_and_update_state(
         &self,
         now: Time,
         client_id: &ClientId,
         consensus_state: &ConsensusState,
         misbehaviour: Misbehaviour<SYNC_COMMITTEE_SIZE>,
     ) -> Result<ClientState<SYNC_COMMITTEE_SIZE>, Error> {
-        if self.is_frozen() {
-            return Err(EthError::ClientFrozen(client_id.clone()).into());
-        }
-        let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(misbehaviour)?;
         misbehaviour.validate()?;
         if &misbehaviour.client_id != client_id {
             return Err(
-                Error::UnexpectedClientIdInMisbehaviour(*client_id, misbehaviour.client_id).into(),
+                Error::UnexpectedClientIdInMisbehaviour(client_id.clone(), misbehaviour.client_id),
             );
         }
 
@@ -408,8 +410,8 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<ClientState<SYNC_COMMITTEE_SIZE>> fo
                 numerator: value.trust_level.numerator(),
                 denominator: value.trust_level.denominator(),
             }),
-            trusting_period: Some(prost_types::Duration::from(value.trusting_period)),
-            max_clock_drift: Some(prost_types::Duration::from(value.max_clock_drift)),
+            trusting_period: Some(value.trusting_period.into()),
+            max_clock_drift: Some(value.max_clock_drift.into()),
             latest_execution_block_number: value.latest_execution_block_number.into(),
             frozen_height: value.frozen_height.map(|h| ProtoHeight {
                 revision_number: h.revision_number(),

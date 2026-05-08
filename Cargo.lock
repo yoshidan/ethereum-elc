@@ -524,7 +524,6 @@ dependencies = [
  "hex-literal",
  "light-client",
  "prost",
- "prost-types",
  "serde",
  "store",
  "thiserror 2.0.18",

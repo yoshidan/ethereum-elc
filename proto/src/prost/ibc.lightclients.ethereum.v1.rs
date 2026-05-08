@@ -26,9 +26,13 @@ pub struct ClientState {
         ::ethereum_light_client_proto::ibc::lightclients::ethereum::v1::Fraction,
     >,
     #[prost(message, optional, tag = "11")]
-    pub trusting_period: ::core::option::Option<::prost_types::Duration>,
+    pub trusting_period: ::core::option::Option<
+        super::super::super::super::google::protobuf::Duration,
+    >,
     #[prost(message, optional, tag = "12")]
-    pub max_clock_drift: ::core::option::Option<::prost_types::Duration>,
+    pub max_clock_drift: ::core::option::Option<
+        super::super::super::super::google::protobuf::Duration,
+    >,
     #[prost(uint64, tag = "13")]
     pub latest_execution_block_number: u64,
     #[prost(message, optional, tag = "14")]
@@ -44,7 +48,9 @@ pub struct ConsensusState {
     #[prost(bytes = "vec", tag = "2")]
     pub storage_root: ::prost::alloc::vec::Vec<u8>,
     #[prost(message, optional, tag = "3")]
-    pub timestamp: ::core::option::Option<::prost_types::Timestamp>,
+    pub timestamp: ::core::option::Option<
+        super::super::super::super::google::protobuf::Timestamp,
+    >,
     #[prost(bytes = "vec", tag = "4")]
     pub current_sync_committee: ::prost::alloc::vec::Vec<u8>,
     #[prost(bytes = "vec", tag = "5")]

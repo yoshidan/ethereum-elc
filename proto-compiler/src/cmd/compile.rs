@@ -77,6 +77,7 @@ impl CompileCmd {
         let compilation = tonic_build::configure()
             .build_client(false)
             .build_server(false)
+            .compile_well_known_types(true)
             .out_dir(out_dir)
             .extern_path(".ibc.core.client.v1", "::ibc_proto::ibc::core::client::v1")
             .extern_path(".cosmos.upgrade.v1beta1", "::ibc_proto::cosmos::upgrade::v1beta1")
