@@ -1,12 +1,13 @@
 syntax = "proto3";
 package ibc.lightclients.ethereum.v1;
 
-option go_package = "github.com/datachainlab/ethereum-elc/go/ethereum-elc/types";
+option go_package = "github.com/datachainlab/ethereum-ibc-relay-prover/light-clients/ethereum/types";
 import "ibc/core/client/v1/client.proto";
 import "ibc/lightclients/ethereum/v1/ethereum.proto";
 import "gogoproto/gogo.proto";
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/duration.proto";
+option (gogoproto.goproto_getters_all) = false;
 
 message ClientState {
   bytes genesis_validators_root = 1;
@@ -31,7 +32,7 @@ message ClientState {
 message ConsensusState {
   uint64 slot = 1;
   bytes storage_root = 2;
-  google.protobuf.Timestamp timestamp = 3;
+  google.protobuf.Timestamp timestamp = 3 [(gogoproto.nullable) = false, (gogoproto.stdtime) = true];
   bytes current_sync_committee = 4;
   bytes next_sync_committee = 5;
 }
