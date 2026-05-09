@@ -1,87 +1,105 @@
+//! Error types for Ethereum light client operations.
+
 use crate::internal_prelude::*;
 use ethereum_consensus::bls::PublicKey;
 use light_client::types::ClientId;
 use light_client::LightClientSpecificError;
 
-#[derive(thiserror::Error, Debug)]
+/// Error type for Ethereum light client operations.
+#[derive(Debug, thiserror::Error)]
 pub enum Error {
-    /// unexpected client type: `{0}`
-    #[error("UnexpectedClientType(client_type={0})")]
-    UnexpectedClientType(String),
-    /// time conversion error: `{0}`
-    #[error("TimeConversionError(0={0})")]
-    Time(light_client::types::TimeError),
-    #[error("CannotInitializeFrozenClient")]
-    CannotInitializeFrozenClient,
-    #[error("EthType error: {0:?}")]
-    TypeError(#[from] ethereum_light_client_types::errors::Error),
-    #[error("UninitializedClientStateField({0})")]
-    UninitializedClientStateField(&'static str),
-    #[error("MissingBellatrixFork")]
-    MissingBellatrixFork,
-    #[error("VerificationError({0:?})")]
-    VerificationError(ethereum_light_client_verifier::errors::Error),
-    #[error("EthereumConsensusError({0:?})")]
-    EthereumConsensusError(ethereum_consensus::errors::Error),
-    #[error("MissingTrustingPeriod")]
-    MissingTrustingPeriod,
-    #[error("NegativeMaxClockDrift")]
-    NegativeMaxClockDrift,
-    #[error("UnknownClientStateType({0})")]
-    UnknownClientStateType(String),
-    #[error("ProtoDecodeError({0:?})")]
-    ProtoDecodeError(prost::DecodeError),
-    #[error("ProtoEncodeError({0:?})")]
-    ProtoEncodeError(prost::EncodeError),
-    #[error("UnexpectedClientIdInMisbehaviour(expected={0}, actual={1})")]
-    UnexpectedClientIdInMisbehaviour(ClientId, ClientId),
-    #[error("MissingProtoField({0})")]
-    MissingProtoField(String),
-    #[error("UnexpectedStoreAddress({0})")]
-    UnexpectedStoreAddress(String),
+    // ========================================================================
+    // Client state errors
+    // ========================================================================
     #[error("client is frozen: client_id={0}")]
     ClientFrozen(ClientId),
-    // ConsensusState errors
-    #[error("UninitializedConsensusStateField({0})")]
+    #[error("cannot initialize frozen client")]
+    CannotInitializeFrozenClient,
+    #[error("uninitialized client state field: {0}")]
+    UninitializedClientStateField(&'static str),
+    #[error("missing bellatrix fork")]
+    MissingBellatrixFork,
+    #[error("missing trusting period")]
+    MissingTrustingPeriod,
+    #[error("negative max clock drift")]
+    NegativeMaxClockDrift,
+    #[error("unknown client state type: {0}")]
+    UnknownClientStateType(String),
+    #[error("unexpected client type: {0}")]
+    UnexpectedClientType(String),
+    #[error("unexpected store address: {0}")]
+    UnexpectedStoreAddress(String),
+
+    // ========================================================================
+    // Consensus state errors
+    // ========================================================================
+    #[error("uninitialized consensus state field: {0}")]
     UninitializedConsensusStateField(&'static str),
-    #[error("InvalidRawConsensusState(reason={reason})")]
+    #[error("invalid raw consensus state: reason={reason}")]
     InvalidRawConsensusState { reason: String },
-    #[error("TimestampOverflowError")]
-    TimestampOverflowError,
-    #[error("Decode({0:?})")]
-    Decode(prost::DecodeError),
-    #[error("UnknownConsensusStateType(consensus_state_type={consensus_state_type})")]
-    UnknownConsensusStateType { consensus_state_type: String },
-    #[error("InvalidCurrentSyncCommitteeKeys(expected={0:?}, actual={1:?})")]
-    InvalidCurrentSyncCommitteeKeys(PublicKey, PublicKey),
-    #[error("InvalidNextSyncCommitteeKeys(expected={0:?}, actual={1:?})")]
-    InvalidNextSyncCommitteeKeys(PublicKey, PublicKey),
-    // Header errors
-    #[error("UnknownMessageType({0})")]
+    #[error("unknown consensus state type: type_url={type_url}")]
+    UnknownConsensusStateType { type_url: String },
+    #[error("invalid current sync committee keys: expected={expected:?} actual={actual:?}")]
+    InvalidCurrentSyncCommitteeKeys { expected: PublicKey, actual: PublicKey },
+    #[error("invalid next sync committee keys: expected={expected:?} actual={actual:?}")]
+    InvalidNextSyncCommitteeKeys { expected: PublicKey, actual: PublicKey },
+    #[error("timestamp overflow")]
+    TimestampOverflow,
+
+    // ========================================================================
+    // Header/Message errors
+    // ========================================================================
+    #[error("unknown message type: {0}")]
     UnknownMessageType(String),
-    #[error("ZeroTimestampError")]
-    ZeroTimestampError,
-    #[error("ZeroBlockNumberError")]
-    ZeroBlockNumberError,
-    #[error("UnexpectedTimestamp(expected={0}, actual={1})")]
-    UnexpectedTimestamp(u128, u128),
-    #[error("UnknownHeaderType(header_type={header_type})")]
-    UnknownHeaderType { header_type: String },
-    // State errors
-    #[error("CommitmentError({0})")]
-    CommitmentError(light_client::commitments::Error),
+    #[error("unknown header type: type_url={type_url}")]
+    UnknownHeaderType { type_url: String },
+    #[error("zero timestamp")]
+    ZeroTimestamp,
+    #[error("zero block number")]
+    ZeroBlockNumber,
+    #[error("unexpected timestamp: expected={expected} actual={actual}")]
+    UnexpectedTimestamp { expected: u128, actual: u128 },
+
+    // ========================================================================
     // Misbehaviour errors
-    #[error("UnknownMisbehaviourType(misbehaviour_type={misbehaviour_type})")]
-    UnknownMisbehaviourType { misbehaviour_type: String },
-    #[error("ClientIdParseError({0})")]
-    ClientIdParseError(light_client::types::TypeError),
-    #[error("LightClientError({0})")]
-    LightClientError(light_client::Error),
+    // ========================================================================
+    #[error("unknown misbehaviour type: type_url={type_url}")]
+    UnknownMisbehaviourType { type_url: String },
+    #[error("unexpected client id in misbehaviour: expected={expected} actual={actual}")]
+    UnexpectedClientIdInMisbehaviour { expected: ClientId, actual: ClientId },
+
+    // ========================================================================
+    // Proto/Serialization errors
+    // ========================================================================
+    #[error("proto missing field: {0}")]
+    ProtoMissingField(String),
+    #[error("proto decode error: {0:?}")]
+    ProtoDecode(prost::DecodeError),
+    #[error("proto encode error: {0:?}")]
+    ProtoEncode(prost::EncodeError),
+
+    // ========================================================================
+    // External library errors (with impl From)
+    // ========================================================================
+    #[error("ethereum light client types error: {0:?}")]
+    EthereumLightClientTypes(#[from] ethereum_light_client_types::errors::Error),
+    #[error("ethereum consensus error: {0:?}")]
+    EthereumConsensus(ethereum_consensus::errors::Error),
+    #[error("verification error: {0:?}")]
+    Verification(ethereum_light_client_verifier::errors::Error),
+    #[error("commitment error: {0}")]
+    Commitment(light_client::commitments::Error),
+    #[error("time error: {0}")]
+    Time(light_client::types::TimeError),
+    #[error("type error: {0}")]
+    Type(light_client::types::TypeError),
+    #[error("light client error: {0}")]
+    LightClient(light_client::Error),
 }
 
 impl Error {
     pub fn proto_missing(field: &str) -> Self {
-        Error::MissingProtoField(field.to_string())
+        Error::ProtoMissingField(field.to_string())
     }
 }
 
@@ -95,18 +113,18 @@ impl From<light_client::types::TimeError> for Error {
 
 impl From<ethereum_consensus::errors::Error> for Error {
     fn from(e: ethereum_consensus::errors::Error) -> Self {
-        Error::EthereumConsensusError(e)
+        Error::EthereumConsensus(e)
     }
 }
 
 impl From<light_client::types::TypeError> for Error {
     fn from(e: light_client::types::TypeError) -> Self {
-        Error::ClientIdParseError(e)
+        Error::Type(e)
     }
 }
 
 impl From<light_client::Error> for Error {
     fn from(e: light_client::Error) -> Self {
-        Error::LightClientError(e)
+        Error::LightClient(e)
     }
 }

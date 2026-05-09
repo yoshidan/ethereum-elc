@@ -63,17 +63,17 @@ pub struct Header<const SYNC_COMMITTEE_SIZE: usize> {
 pub fn decode_header<const SYNC_COMMITTEE_SIZE: usize, B: Buf>(
     buf: B,
 ) -> Result<Header<SYNC_COMMITTEE_SIZE>, Error> {
-    RawHeader::decode(buf).map_err(Error::Decode)?.try_into()
+    RawHeader::decode(buf).map_err(Error::ProtoDecode)?.try_into()
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
     pub fn validate<C: ChainContext>(&self, ctx: &C) -> Result<(), Error> {
         self.trusted_sync_committee.validate()?;
         if self.timestamp.as_unix_timestamp_nanos() == 0 {
-            return Err(Error::ZeroTimestampError);
+            return Err(Error::ZeroTimestamp);
         }
         if self.execution_update.block_number == U64(0) {
-            return Err(Error::ZeroBlockNumberError);
+            return Err(Error::ZeroBlockNumber);
         }
         let header_timestamp_nanos = self.timestamp.as_unix_timestamp_nanos();
         let spec_timestamp_nanos = new_timestamp(
@@ -81,10 +81,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
         )?
         .as_unix_timestamp_nanos();
         if header_timestamp_nanos != spec_timestamp_nanos {
-            return Err(Error::UnexpectedTimestamp(
-                spec_timestamp_nanos,
-                header_timestamp_nanos,
-            ));
+            return Err(Error::UnexpectedTimestamp {
+                expected: spec_timestamp_nanos,
+                actual: header_timestamp_nanos,
+            });
         }
         Ok(())
     }
@@ -125,7 +125,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Header<SYNC_COMMITTEE
         match raw.type_url.as_str() {
             ETHEREUM_HEADER_TYPE_URL => decode_header(raw.value.deref()),
             _ => Err(Error::UnknownHeaderType {
-                header_type: raw.type_url,
+                type_url: raw.type_url,
             }),
         }
     }

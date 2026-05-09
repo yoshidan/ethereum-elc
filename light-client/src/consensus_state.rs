@@ -151,14 +151,14 @@ impl TryFrom<IBCAny> for ConsensusState {
 
         fn decode_consensus_state<B: Buf>(buf: B) -> Result<ConsensusState, Error> {
             RawConsensusState::decode(buf)
-                .map_err(Error::Decode)?
+                .map_err(Error::ProtoDecode)?
                 .try_into()
         }
 
         match raw.type_url.as_str() {
             ETHEREUM_CONSENSUS_STATE_TYPE_URL => decode_consensus_state(raw.value.deref()),
             _ => Err(Error::UnknownConsensusStateType {
-                consensus_state_type: raw.type_url,
+                type_url: raw.type_url,
             }),
         }
     }
@@ -170,7 +170,7 @@ impl TryFrom<ConsensusState> for IBCAny {
     fn try_from(value: ConsensusState) -> Result<Self, Self::Error> {
         let value: RawConsensusState = value.into();
         let mut v = Vec::new();
-        value.encode(&mut v).map_err(Error::ProtoEncodeError)?;
+        value.encode(&mut v).map_err(Error::ProtoEncode)?;
         Ok(Self {
             type_url: ETHEREUM_CONSENSUS_STATE_TYPE_URL.to_string(),
             value: v,
@@ -215,10 +215,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TrustedConsensusState<SYNC_COMMITTEE_SIZE
                     next_sync_committee: None,
                 })
             } else {
-                Err(Error::InvalidCurrentSyncCommitteeKeys(
-                    sync_committee.aggregate_pubkey,
-                    consensus_state.current_sync_committee,
-                ))
+                Err(Error::InvalidCurrentSyncCommitteeKeys {
+                    expected: sync_committee.aggregate_pubkey,
+                    actual: consensus_state.current_sync_committee,
+                })
             };
         }
 
@@ -229,10 +229,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TrustedConsensusState<SYNC_COMMITTEE_SIZE
                 next_sync_committee: Some(sync_committee),
             })
         } else {
-            Err(Error::InvalidNextSyncCommitteeKeys(
-                sync_committee.aggregate_pubkey,
-                consensus_state.next_sync_committee,
-            ))
+            Err(Error::InvalidNextSyncCommitteeKeys {
+                expected: sync_committee.aggregate_pubkey,
+                actual: consensus_state.next_sync_committee,
+            })
         }
     }
 }

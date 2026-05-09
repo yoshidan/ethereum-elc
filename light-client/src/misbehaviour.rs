@@ -142,7 +142,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Misbehaviour<SYNC_COM
                 decode_next_sync_committee_misbehaviour(raw.value.deref())
             }
             _ => Err(Error::UnknownMisbehaviourType {
-                misbehaviour_type: raw.type_url,
+                type_url: raw.type_url,
             }),
         }
     }
@@ -152,7 +152,7 @@ fn decode_finalized_header_misbehaviour<const SYNC_COMMITTEE_SIZE: usize, B: Buf
     buf: B,
 ) -> Result<Misbehaviour<SYNC_COMMITTEE_SIZE>, Error> {
     RawFinalizedHeaderMisbehaviour::decode(buf)
-        .map_err(Error::Decode)?
+        .map_err(Error::ProtoDecode)?
         .try_into()
 }
 
@@ -160,6 +160,6 @@ fn decode_next_sync_committee_misbehaviour<const SYNC_COMMITTEE_SIZE: usize, B: 
     buf: B,
 ) -> Result<Misbehaviour<SYNC_COMMITTEE_SIZE>, Error> {
     RawNextSyncCommitteeMisbehaviour::decode(buf)
-        .map_err(Error::Decode)?
+        .map_err(Error::ProtoDecode)?
         .try_into()
 }

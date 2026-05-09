@@ -514,13 +514,11 @@ name = "ethereum-elc"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "displaydoc",
  "ethereum-consensus",
  "ethereum-elc-proto",
  "ethereum-light-client-proto",
  "ethereum-light-client-types",
  "ethereum-light-client-verifier",
- "hex",
  "hex-literal",
  "light-client",
  "prost",
@@ -528,7 +526,6 @@ dependencies = [
  "store",
  "thiserror 2.0.18",
  "time",
- "tiny-keccak",
 ]
 
 [[package]]
@@ -538,7 +535,6 @@ dependencies = [
  "ethereum-light-client-proto",
  "ibc-proto",
  "prost",
- "prost-types",
 ]
 
 [[package]]

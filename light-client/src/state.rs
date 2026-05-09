@@ -11,5 +11,5 @@ pub fn gen_state_id<const SYNC_COMMITTEE_SIZE: usize>(
 ) -> Result<StateID, Error> {
     let client_state = Any::try_from(client_state.canonicalize())?;
     let consensus_state = Any::try_from(consensus_state)?;
-    gen_state_id_from_any(&client_state, &consensus_state).map_err(Error::CommitmentError)
+    gen_state_id_from_any(&client_state, &consensus_state).map_err(Error::Commitment)
 }

@@ -114,7 +114,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
             proof,
             &client_state.execution_verifier,
         )
-        .map_err(Error::TypeError)?;
+        .map_err(Error::EthereumLightClientTypes)?;
         Ok(VerifyMembershipResult {
             message: VerifyMembershipProxyMessage::new(
                 prefix.to_vec(),
@@ -151,7 +151,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
             proof,
             &client_state.execution_verifier,
         )
-        .map_err(Error::TypeError)?;
+        .map_err(Error::EthereumLightClientTypes)?;
         Ok(VerifyNonMembershipResult {
             message: VerifyMembershipProxyMessage::new(
                 prefix.to_vec(),

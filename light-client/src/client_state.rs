@@ -194,7 +194,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
                 &consensus_update,
                 &execution_update,
             )
-            .map_err(Error::VerificationError)?;
+            .map_err(Error::Verification)?;
 
         verify_account_storage(
             &self.execution_verifier,
@@ -237,10 +237,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
     ) -> Result<ClientState<SYNC_COMMITTEE_SIZE>, Error> {
         misbehaviour.validate()?;
         if &misbehaviour.client_id != client_id {
-            return Err(Error::UnexpectedClientIdInMisbehaviour(
-                client_id.clone(),
-                misbehaviour.client_id,
-            ));
+            return Err(Error::UnexpectedClientIdInMisbehaviour {
+                expected: client_id.clone(),
+                actual: misbehaviour.client_id,
+            });
         }
 
         let cc = self.build_context(now);
@@ -252,7 +252,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
 
         self.consensus_verifier
             .validate_misbehaviour(&cc, &trusted_consensus_state, misbehaviour.data)
-            .map_err(Error::VerificationError)?;
+            .map_err(Error::Verification)?;
 
         validate_state_timestamp_within_trusting_period(
             now,
@@ -315,7 +315,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
                 })
                 .collect::<Result<Vec<_>, _>>()?,
         )
-        .map_err(Error::EthereumConsensusError)?;
+        .map_err(Error::EthereumConsensus)?;
         let trust_level = value
             .trust_level
             .ok_or(Error::proto_missing("trust_level"))?;
@@ -337,7 +337,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
                 .map_err(|e| Error::UnexpectedStoreAddress(format!("{:?}", e)))?,
             ibc_commitments_slot: H256::from_slice(&value.ibc_commitments_slot),
             trust_level: Fraction::new(trust_level.numerator, trust_level.denominator)
-                .map_err(Error::VerificationError)?,
+                .map_err(Error::Verification)?,
             trusting_period: value
                 .trusting_period
                 .ok_or(Error::MissingTrustingPeriod)?
@@ -426,7 +426,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for ClientState<SYNC_COMM
             return Err(Error::UnknownClientStateType(any.type_url));
         }
         RawClientState::decode(any.value.as_slice())
-            .map_err(Error::ProtoDecodeError)?
+            .map_err(Error::ProtoDecode)?
             .try_into()
     }
 }
@@ -437,7 +437,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<ClientState<SYNC_COMMITTEE_SIZE>>
     fn try_from(value: ClientState<SYNC_COMMITTEE_SIZE>) -> Result<Self, Self::Error> {
         let value: RawClientState = value.into();
         let mut v = Vec::new();
-        value.encode(&mut v).map_err(Error::ProtoEncodeError)?;
+        value.encode(&mut v).map_err(Error::ProtoEncode)?;
         Ok(Self {
             type_url: ETHEREUM_CLIENT_STATE_TYPE_URL.to_string(),
             value: v,
