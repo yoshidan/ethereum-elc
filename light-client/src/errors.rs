@@ -87,13 +87,13 @@ pub enum Error {
     EthereumConsensus(ethereum_consensus::errors::Error),
     #[error("verification error: {0:?}")]
     Verification(ethereum_light_client_verifier::errors::Error),
-    #[error("commitment error: {0}")]
+    #[error("commitment error: {0:?}")]
     Commitment(light_client::commitments::Error),
-    #[error("time error: {0}")]
+    #[error("time error: {0:?}")]
     Time(light_client::types::TimeError),
-    #[error("type error: {0}")]
+    #[error("type error: {0:?}")]
     Type(light_client::types::TypeError),
-    #[error("light client error: {0}")]
+    #[error("light client error: {0:?}")]
     LightClient(light_client::Error),
 }
 
