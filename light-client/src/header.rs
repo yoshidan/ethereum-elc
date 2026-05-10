@@ -63,7 +63,9 @@ pub struct Header<const SYNC_COMMITTEE_SIZE: usize> {
 pub fn decode_header<const SYNC_COMMITTEE_SIZE: usize, B: Buf>(
     buf: B,
 ) -> Result<Header<SYNC_COMMITTEE_SIZE>, Error> {
-    RawHeader::decode(buf).map_err(Error::ProtoDecode)?.try_into()
+    RawHeader::decode(buf)
+        .map_err(Error::ProtoDecode)?
+        .try_into()
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {

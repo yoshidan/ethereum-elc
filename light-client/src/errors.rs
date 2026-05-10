@@ -40,9 +40,15 @@ pub enum Error {
     #[error("unknown consensus state type: type_url={type_url}")]
     UnknownConsensusStateType { type_url: String },
     #[error("invalid current sync committee keys: expected={expected:?} actual={actual:?}")]
-    InvalidCurrentSyncCommitteeKeys { expected: PublicKey, actual: PublicKey },
+    InvalidCurrentSyncCommitteeKeys {
+        expected: PublicKey,
+        actual: PublicKey,
+    },
     #[error("invalid next sync committee keys: expected={expected:?} actual={actual:?}")]
-    InvalidNextSyncCommitteeKeys { expected: PublicKey, actual: PublicKey },
+    InvalidNextSyncCommitteeKeys {
+        expected: PublicKey,
+        actual: PublicKey,
+    },
     #[error("timestamp overflow")]
     TimestampOverflow,
 
@@ -66,7 +72,10 @@ pub enum Error {
     #[error("unknown misbehaviour type: type_url={type_url}")]
     UnknownMisbehaviourType { type_url: String },
     #[error("unexpected client id in misbehaviour: expected={expected} actual={actual}")]
-    UnexpectedClientIdInMisbehaviour { expected: ClientId, actual: ClientId },
+    UnexpectedClientIdInMisbehaviour {
+        expected: ClientId,
+        actual: ClientId,
+    },
 
     // ========================================================================
     // Proto/Serialization errors
