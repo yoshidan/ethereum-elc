@@ -540,6 +540,7 @@ dependencies = [
 [[package]]
 name = "ethereum-light-client-proto"
 version = "0.1.0"
+source = "git+https://github.com/datachainlab/ethereum-light-client-types?rev=relayer%2Fv0.1.5#f6a41d746b0fcf8627201394daa7d0a0051bc438"
 dependencies = [
  "ibc-proto",
  "prost",
@@ -548,6 +549,7 @@ dependencies = [
 [[package]]
 name = "ethereum-light-client-types"
 version = "0.1.0"
+source = "git+https://github.com/datachainlab/ethereum-light-client-types?rev=relayer%2Fv0.1.5#f6a41d746b0fcf8627201394daa7d0a0051bc438"
 dependencies = [
  "ethereum-consensus",
  "ethereum-light-client-proto",
