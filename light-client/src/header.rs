@@ -21,7 +21,7 @@ use prost::Message;
 pub const ETHEREUM_HEADER_TYPE_URL: &str = "/ibc.lightclients.ethereum.v1.Header";
 
 #[allow(clippy::large_enum_variant)]
-#[derive(Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub enum ClientMessage<const SYNC_COMMITTEE_SIZE: usize> {
     Header(Header<SYNC_COMMITTEE_SIZE>),
     Misbehaviour(Misbehaviour<SYNC_COMMITTEE_SIZE>),
@@ -130,5 +130,188 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Header<SYNC_COMMITTEE
                 type_url: raw.type_url,
             }),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+    use crate::misbehaviour::{
+        ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
+        ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
+    };
+    use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
+    use ethereum_consensus::types::U64;
+    use ethereum_light_client_types::consensus::{
+        AccountUpdateInfo, ExecutionUpdateInfo,
+        TrustedSyncCommittee as EthTrustedSyncCommittee,
+    };
+    use ethereum_light_client_verifier::updates::ConsensusUpdate;
+    use light_client::types::Height;
+
+    #[test]
+    fn test_header_type_url() {
+        assert_eq!(
+            ETHEREUM_HEADER_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.Header"
+        );
+    }
+
+    #[test]
+    fn test_client_message_from_any_unknown_type() {
+        let any = IBCAny {
+            type_url: "/unknown.type".to_string(),
+            value: vec![],
+        };
+        let result = ClientMessage::<SYNC_COMMITTEE_SIZE>::try_from(any);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UnknownMessageType(ref url) if url == "/unknown.type"
+        ));
+    }
+
+    #[test]
+    fn test_header_from_any_unknown_type() {
+        let any = IBCAny {
+            type_url: "/unknown.header".to_string(),
+            value: vec![],
+        };
+        let result = Header::<SYNC_COMMITTEE_SIZE>::try_from(any);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UnknownHeaderType { type_url } if type_url == "/unknown.header"
+        ));
+    }
+
+    #[test]
+    fn test_misbehaviour_type_urls() {
+        assert_eq!(
+            ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.FinalizedHeaderMisbehaviour"
+        );
+        assert_eq!(
+            ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.NextSyncCommitteeMisbehaviour"
+        );
+    }
+
+    #[test]
+    fn test_header_validate_success() {
+        let fixture = TestFixture::simple(1_000_000);
+        let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
+
+        let update_info = to_consensus_update_info(update);
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info,
+            execution_update: ExecutionUpdateInfo {
+                block_number: U64(100),
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: new_timestamp(timestamp_secs).unwrap(),
+        };
+
+        let result = header.validate(&fixture.ctx);
+        assert!(result.is_ok(), "header validation failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_header_validate_zero_timestamp() {
+        let fixture = TestFixture::simple(1_000_000);
+        let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
+
+        let update_info = to_consensus_update_info(update);
+
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info,
+            execution_update: ExecutionUpdateInfo {
+                block_number: U64(100),
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: Time::from_unix_timestamp_nanos(0).unwrap(),
+        };
+
+        let result = header.validate(&fixture.ctx);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::ZeroTimestamp));
+    }
+
+    #[test]
+    fn test_header_validate_zero_block_number() {
+        let fixture = TestFixture::simple(1_000_000);
+        let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
+
+        let update_info = to_consensus_update_info(update);
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info,
+            execution_update: ExecutionUpdateInfo {
+                block_number: U64(0), // Zero block number
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: new_timestamp(timestamp_secs).unwrap(),
+        };
+
+        let result = header.validate(&fixture.ctx);
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::ZeroBlockNumber));
+    }
+
+    #[test]
+    fn test_header_validate_unexpected_timestamp() {
+        let fixture = TestFixture::simple(1_000_000);
+        let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
+
+        let update_info = to_consensus_update_info(update);
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        // Use wrong timestamp (off by 1 second)
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info,
+            execution_update: ExecutionUpdateInfo {
+                block_number: U64(100),
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: new_timestamp(timestamp_secs + 1).unwrap(), // Wrong timestamp
+        };
+
+        let result = header.validate(&fixture.ctx);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UnexpectedTimestamp { .. }
+        ));
     }
 }

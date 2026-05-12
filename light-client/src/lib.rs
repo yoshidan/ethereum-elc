@@ -16,6 +16,9 @@ pub mod consensus_state;
 pub mod header;
 pub mod misbehaviour;
 
+#[cfg(test)]
+pub(crate) mod test_utils;
+
 #[allow(unused_imports)]
 mod internal_prelude {
     pub use alloc::boxed::Box;

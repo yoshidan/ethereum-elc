@@ -137,3 +137,101 @@ impl From<light_client::Error> for Error {
         Error::LightClient(e)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    #[test]
+    fn test_proto_missing() {
+        let err = Error::proto_missing("test_field");
+        assert!(matches!(err, Error::ProtoMissingField(ref s) if s == "test_field"));
+        assert!(err.to_string().contains("test_field"));
+    }
+
+    #[test]
+    fn test_error_display_client_state_errors() {
+        let err = Error::CannotInitializeFrozenClient;
+        assert_eq!(err.to_string(), "cannot initialize frozen client");
+
+        let err = Error::UninitializedClientStateField("latest_slot");
+        assert!(err.to_string().contains("latest_slot"));
+
+        let err = Error::MissingBellatrixFork;
+        assert_eq!(err.to_string(), "missing bellatrix fork");
+
+        let err = Error::MissingTrustingPeriod;
+        assert_eq!(err.to_string(), "missing trusting period");
+
+        let err = Error::NegativeMaxClockDrift;
+        assert_eq!(err.to_string(), "negative max clock drift");
+
+        let err = Error::UnknownClientStateType("unknown_type".to_string());
+        assert!(err.to_string().contains("unknown_type"));
+
+        let err = Error::UnexpectedClientType("wrong_type".to_string());
+        assert!(err.to_string().contains("wrong_type"));
+
+        let err = Error::UnexpectedStoreAddress("0x1234".to_string());
+        assert!(err.to_string().contains("0x1234"));
+    }
+
+    #[test]
+    fn test_error_display_consensus_state_errors() {
+        let err = Error::UninitializedConsensusStateField("slot");
+        assert!(err.to_string().contains("slot"));
+
+        let err = Error::InvalidRawConsensusState {
+            reason: "invalid format".to_string(),
+        };
+        assert!(err.to_string().contains("invalid format"));
+
+        let err = Error::UnknownConsensusStateType {
+            type_url: "/unknown.type".to_string(),
+        };
+        assert!(err.to_string().contains("/unknown.type"));
+
+        let err = Error::TimestampOverflow;
+        assert_eq!(err.to_string(), "timestamp overflow");
+    }
+
+    #[test]
+    fn test_error_display_header_errors() {
+        let err = Error::UnknownMessageType("unknown_msg".to_string());
+        assert!(err.to_string().contains("unknown_msg"));
+
+        let err = Error::UnknownHeaderType {
+            type_url: "/unknown.header".to_string(),
+        };
+        assert!(err.to_string().contains("/unknown.header"));
+
+        let err = Error::ZeroTimestamp;
+        assert_eq!(err.to_string(), "zero timestamp");
+
+        let err = Error::ZeroBlockNumber;
+        assert_eq!(err.to_string(), "zero block number");
+
+        let err = Error::UnexpectedTimestamp {
+            expected: 1000,
+            actual: 2000,
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("1000"));
+        assert!(msg.contains("2000"));
+    }
+
+    #[test]
+    fn test_error_display_misbehaviour_errors() {
+        let err = Error::UnknownMisbehaviourType {
+            type_url: "/unknown.misbehaviour".to_string(),
+        };
+        assert!(err.to_string().contains("/unknown.misbehaviour"));
+    }
+
+    #[test]
+    fn test_error_display_proto_errors() {
+        let err = Error::ProtoMissingField("required_field".to_string());
+        assert!(err.to_string().contains("required_field"));
+    }
+}

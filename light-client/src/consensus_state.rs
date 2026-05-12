@@ -276,3 +276,190 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<TrustedConsensusState<SYNC_COMMITTEE
         value.state
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use hex_literal::hex;
+
+    /// Creates a valid test consensus state for testing purposes.
+    pub fn create_test_consensus_state() -> ConsensusState {
+        // Create a valid 48-byte BLS public key (compressed G1 point)
+        let pubkey_bytes: [u8; 48] = hex!(
+            "a99a76ed7796f7be22d5b7e85deeb7c5677e88e511e0b337618f8c4eb61349b4bf2d153f649f7b53359fe8b94a38e44c"
+        );
+        let pubkey = PublicKey::try_from(pubkey_bytes.to_vec()).unwrap();
+
+        ConsensusState {
+            slot: Slot::from(100u64),
+            storage_root: H256::from_slice(&[1u8; 32]),
+            timestamp: Time::from_unix_timestamp_nanos(1_000_000_000_000_000_000).unwrap(),
+            current_sync_committee: pubkey.clone(),
+            next_sync_committee: pubkey,
+        }
+    }
+
+    #[test]
+    fn test_consensus_state_default() {
+        let state = ConsensusState::default();
+        assert_eq!(state.slot, Slot::default());
+        assert_eq!(state.storage_root, H256::default());
+        assert_eq!(state.timestamp.as_unix_timestamp_nanos(), 0);
+        assert_eq!(state.current_sync_committee, PublicKey::default());
+        assert_eq!(state.next_sync_committee, PublicKey::default());
+    }
+
+    #[test]
+    fn test_consensus_state_validate_default_fails() {
+        let state = ConsensusState::default();
+        let result = state.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedConsensusStateField("slot")
+        ));
+    }
+
+    #[test]
+    fn test_consensus_state_validate_success() {
+        let state = create_test_consensus_state();
+        let result = state.validate();
+        assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[test]
+    fn test_consensus_state_validate_missing_slot() {
+        let state = ConsensusState {
+            slot: Slot::default(),
+            storage_root: H256::from_slice(&[1u8; 32]),
+            timestamp: Time::from_unix_timestamp_nanos(1_000_000_000).unwrap(),
+            current_sync_committee: PublicKey::default(),
+            next_sync_committee: PublicKey::default(),
+        };
+        let result = state.validate();
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedConsensusStateField("slot")
+        ));
+    }
+
+    #[test]
+    fn test_consensus_state_validate_missing_timestamp() {
+        let state = ConsensusState {
+            slot: Slot::from(100u64),
+            storage_root: H256::from_slice(&[1u8; 32]),
+            timestamp: Time::from_unix_timestamp_nanos(0).unwrap(),
+            current_sync_committee: PublicKey::default(),
+            next_sync_committee: PublicKey::default(),
+        };
+        let result = state.validate();
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedConsensusStateField("timestamp")
+        ));
+    }
+
+    #[test]
+    fn test_consensus_state_validate_missing_current_sync_committee() {
+        let state = ConsensusState {
+            slot: Slot::from(100u64),
+            storage_root: H256::from_slice(&[1u8; 32]),
+            timestamp: Time::from_unix_timestamp_nanos(1_000_000_000).unwrap(),
+            current_sync_committee: PublicKey::default(),
+            next_sync_committee: PublicKey::default(),
+        };
+        let result = state.validate();
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedConsensusStateField("current_sync_committee")
+        ));
+    }
+
+    #[test]
+    fn test_consensus_state_validate_missing_next_sync_committee() {
+        let pubkey_bytes: [u8; 48] = hex!(
+            "a99a76ed7796f7be22d5b7e85deeb7c5677e88e511e0b337618f8c4eb61349b4bf2d153f649f7b53359fe8b94a38e44c"
+        );
+        let pubkey = PublicKey::try_from(pubkey_bytes.to_vec()).unwrap();
+
+        let state = ConsensusState {
+            slot: Slot::from(100u64),
+            storage_root: H256::from_slice(&[1u8; 32]),
+            timestamp: Time::from_unix_timestamp_nanos(1_000_000_000).unwrap(),
+            current_sync_committee: pubkey,
+            next_sync_committee: PublicKey::default(),
+        };
+        let result = state.validate();
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedConsensusStateField("next_sync_committee")
+        ));
+    }
+
+    #[test]
+    fn test_trusted_consensus_state_default() {
+        let state = TrustedConsensusState::<32>::default();
+        assert_eq!(state.state, ConsensusState::default());
+        assert!(state.current_sync_committee.is_none());
+        assert!(state.next_sync_committee.is_none());
+    }
+
+    #[test]
+    fn test_consensus_state_type_url() {
+        assert_eq!(
+            ETHEREUM_CONSENSUS_STATE_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.ConsensusState"
+        );
+    }
+
+    #[test]
+    fn test_consensus_state_proto_conversion() {
+        let consensus_state = create_test_consensus_state();
+
+        // Convert to Any and back
+        let any: Any = consensus_state.clone().try_into().unwrap();
+        let consensus_state2 = ConsensusState::try_from(any).unwrap();
+
+        assert_eq!(consensus_state, consensus_state2);
+    }
+
+    #[test]
+    fn test_consensus_state_proto_conversion_ibc_any() {
+        let consensus_state = create_test_consensus_state();
+
+        // Convert to IBCAny and back
+        let ibc_any: IBCAny = consensus_state.clone().try_into().unwrap();
+        assert_eq!(ibc_any.type_url, ETHEREUM_CONSENSUS_STATE_TYPE_URL);
+
+        let consensus_state2 = ConsensusState::try_from(ibc_any).unwrap();
+        assert_eq!(consensus_state, consensus_state2);
+    }
+
+    #[test]
+    fn test_consensus_state_from_any_unknown_type() {
+        let any = IBCAny {
+            type_url: "/unknown.type".to_string(),
+            value: vec![],
+        };
+        let result = ConsensusState::try_from(any);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UnknownConsensusStateType { type_url } if type_url == "/unknown.type"
+        ));
+    }
+
+    #[test]
+    fn test_consensus_state_storage_root() {
+        let state = create_test_consensus_state();
+        assert_eq!(state.storage_root(), state.storage_root);
+    }
+
+    #[test]
+    fn test_timestamp_to_proto_and_back() {
+        let original = create_test_consensus_state();
+        let raw: RawConsensusState = original.clone().into();
+        let converted = ConsensusState::try_from(raw).unwrap();
+        assert_eq!(original.timestamp, converted.timestamp);
+    }
+}

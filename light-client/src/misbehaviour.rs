@@ -163,3 +163,55 @@ fn decode_next_sync_committee_misbehaviour<const SYNC_COMMITTEE_SIZE: usize, B: 
         .map_err(Error::ProtoDecode)?
         .try_into()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use alloc::string::ToString;
+
+    #[test]
+    fn test_misbehaviour_type_urls() {
+        assert_eq!(
+            ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.FinalizedHeaderMisbehaviour"
+        );
+        assert_eq!(
+            ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.NextSyncCommitteeMisbehaviour"
+        );
+    }
+
+    #[test]
+    fn test_misbehaviour_from_any_unknown_type() {
+        let any = IBCAny {
+            type_url: "/unknown.misbehaviour".to_string(),
+            value: vec![],
+        };
+        let result = Misbehaviour::<512>::try_from(any);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UnknownMisbehaviourType { type_url } if type_url == "/unknown.misbehaviour"
+        ));
+    }
+
+    #[test]
+    fn test_misbehaviour_from_any_invalid_finalized_header() {
+        let any = IBCAny {
+            type_url: ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL.to_string(),
+            value: vec![0x00, 0x01, 0x02], // invalid protobuf data
+        };
+        let result = Misbehaviour::<512>::try_from(any);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_misbehaviour_from_any_invalid_next_sync_committee() {
+        let any = IBCAny {
+            type_url: ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL.to_string(),
+            value: vec![0x00, 0x01, 0x02], // invalid protobuf data
+        };
+        let result = Misbehaviour::<512>::try_from(any);
+        assert!(result.is_err());
+    }
+}

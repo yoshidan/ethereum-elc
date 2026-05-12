@@ -459,3 +459,546 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<Any> for ClientState<SYNC_COMMITT
         IBCAny::from(any).try_into()
     }
 }
+
+#[cfg(test)]
+pub(crate) mod tests {
+    use super::*;
+    use ethereum_consensus::fork::{
+        altair::ALTAIR_FORK_SPEC, bellatrix::BELLATRIX_FORK_SPEC, capella::CAPELLA_FORK_SPEC,
+        deneb::DENEB_FORK_SPEC,
+    };
+    use ethereum_consensus::preset::minimal::PRESET;
+    use ethereum_light_client_verifier::context::Fraction;
+    use hex_literal::hex;
+
+    pub type TestClientState = ClientState<{ PRESET.SYNC_COMMITTEE_SIZE }>;
+
+    /// Creates a valid test client state for testing purposes.
+    pub fn create_test_client_state() -> TestClientState {
+        TestClientState {
+            genesis_validators_root: H256::from_slice(&[1u8; 32]),
+            min_sync_committee_participants: 1u64.into(),
+            genesis_time: 1u64.into(),
+            fork_parameters: ForkParameters::new(
+                Version([0, 0, 0, 1]),
+                vec![
+                    ForkParameter::new(Version([1, 0, 0, 1]), U64(0), ALTAIR_FORK_SPEC),
+                    ForkParameter::new(Version([2, 0, 0, 1]), U64(0), BELLATRIX_FORK_SPEC),
+                    ForkParameter::new(Version([3, 0, 0, 1]), U64(0), CAPELLA_FORK_SPEC),
+                    ForkParameter::new(Version([4, 0, 0, 1]), U64(0), DENEB_FORK_SPEC),
+                ],
+            )
+            .unwrap(),
+            seconds_per_slot: PRESET.SECONDS_PER_SLOT,
+            slots_per_epoch: PRESET.SLOTS_PER_EPOCH,
+            epochs_per_sync_committee_period: PRESET.EPOCHS_PER_SYNC_COMMITTEE_PERIOD,
+            ibc_address: Address(hex!("ff77D90D6aA12db33d3Ba50A34fB25401f6e4c4F")),
+            ibc_commitments_slot: H256::from_slice(&[2u8; 32]),
+            trust_level: Fraction::new(2, 3).unwrap(),
+            trusting_period: Duration::from_secs(60 * 60 * 27),
+            max_clock_drift: Duration::from_secs(60),
+            latest_execution_block_number: 1u64.into(),
+            frozen_height: None,
+            consensus_verifier: Default::default(),
+            execution_verifier: Default::default(),
+        }
+    }
+
+    #[test]
+    fn test_client_state_default() {
+        let state = TestClientState::default();
+        assert_eq!(state.genesis_validators_root, Root::default());
+        assert_eq!(state.min_sync_committee_participants, U64::default());
+        assert_eq!(state.genesis_time, U64::default());
+        assert_eq!(state.frozen_height, None);
+        assert!(!state.is_frozen());
+    }
+
+    #[test]
+    fn test_client_state_validate_default_fails() {
+        let state = TestClientState::default();
+        let result = state.validate();
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedClientStateField("genesis_validators_root")
+        ));
+    }
+
+    #[test]
+    fn test_client_state_validate_success() {
+        let state = create_test_client_state();
+        let result = state.validate();
+        assert!(result.is_ok(), "{:?}", result);
+    }
+
+    #[test]
+    fn test_client_state_is_frozen() {
+        let state = TestClientState::default();
+        assert!(!state.is_frozen());
+
+        let frozen_state = state.with_frozen_height(Height::new(0, 100));
+        assert!(frozen_state.is_frozen());
+        assert_eq!(frozen_state.frozen_height, Some(Height::new(0, 100)));
+    }
+
+    #[test]
+    fn test_client_state_latest_height() {
+        let mut state = TestClientState::default();
+        state.latest_execution_block_number = U64(12345);
+
+        let height = state.latest_height();
+        assert_eq!(height.revision_number(), ETHEREUM_CLIENT_REVISION_NUMBER);
+        assert_eq!(height.revision_height(), 12345);
+    }
+
+    #[test]
+    fn test_client_state_canonicalize() {
+        let mut state = TestClientState::default();
+        state.latest_execution_block_number = U64(12345);
+        state.frozen_height = Some(Height::new(0, 100));
+
+        let canonicalized = state.canonicalize();
+        assert_eq!(canonicalized.latest_execution_block_number, U64(0));
+        assert_eq!(canonicalized.frozen_height, None);
+    }
+
+    #[test]
+    fn test_client_state_ibc_commitments_slot() {
+        let mut state = TestClientState::default();
+        let slot = H256::from_slice(&[0xab; 32]);
+        state.ibc_commitments_slot = slot;
+
+        assert_eq!(state.ibc_commitments_slot(), slot);
+    }
+
+    #[test]
+    fn test_client_state_type_url() {
+        assert_eq!(
+            ETHEREUM_CLIENT_STATE_TYPE_URL,
+            "/ibc.lightclients.ethereum.v1.ClientState"
+        );
+    }
+
+    #[test]
+    fn test_ethereum_client_revision_number() {
+        assert_eq!(ETHEREUM_CLIENT_REVISION_NUMBER, 0);
+    }
+
+    #[test]
+    fn test_client_state_validate_missing_min_sync_committee_participants() {
+        let state = TestClientState {
+            genesis_validators_root: H256::from_slice(&[1u8; 32]),
+            min_sync_committee_participants: U64::default(),
+            ..Default::default()
+        };
+        let result = state.validate();
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedClientStateField("min_sync_committee_participants")
+        ));
+    }
+
+    #[test]
+    fn test_client_state_validate_missing_genesis_time() {
+        let state = TestClientState {
+            genesis_validators_root: H256::from_slice(&[1u8; 32]),
+            min_sync_committee_participants: U64(1),
+            genesis_time: U64::default(),
+            ..Default::default()
+        };
+        let result = state.validate();
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UninitializedClientStateField("genesis_time")
+        ));
+    }
+
+    #[test]
+    fn test_client_state_validate_missing_bellatrix_fork() {
+        let state = TestClientState {
+            genesis_validators_root: H256::from_slice(&[1u8; 32]),
+            min_sync_committee_participants: 1u64.into(),
+            genesis_time: 1u64.into(),
+            fork_parameters: ForkParameters::new(
+                Version([0, 0, 0, 1]),
+                vec![ForkParameter::new(
+                    Version([1, 0, 0, 1]),
+                    U64(0),
+                    ALTAIR_FORK_SPEC,
+                )],
+            )
+            .unwrap(),
+            seconds_per_slot: PRESET.SECONDS_PER_SLOT,
+            slots_per_epoch: PRESET.SLOTS_PER_EPOCH,
+            epochs_per_sync_committee_period: PRESET.EPOCHS_PER_SYNC_COMMITTEE_PERIOD,
+            ..Default::default()
+        };
+        let result = state.validate();
+        assert!(matches!(result.unwrap_err(), Error::MissingBellatrixFork));
+    }
+
+    #[test]
+    fn test_client_state_proto_conversion() {
+        let client_state = create_test_client_state();
+
+        // Convert to Any and back
+        let any: Any = client_state.clone().try_into().unwrap();
+        let client_state2 = TestClientState::try_from(any).unwrap();
+
+        assert_eq!(client_state, client_state2);
+    }
+
+    #[test]
+    fn test_client_state_proto_conversion_ibc_any() {
+        let client_state = create_test_client_state();
+
+        // Convert to IBCAny and back
+        let ibc_any: IBCAny = client_state.clone().try_into().unwrap();
+        assert_eq!(ibc_any.type_url, ETHEREUM_CLIENT_STATE_TYPE_URL);
+
+        let client_state2 = TestClientState::try_from(ibc_any).unwrap();
+        assert_eq!(client_state, client_state2);
+    }
+
+    #[test]
+    fn test_client_state_from_any_unknown_type() {
+        let any = IBCAny {
+            type_url: "/unknown.type".to_string(),
+            value: vec![],
+        };
+        let result = TestClientState::try_from(any);
+        assert!(result.is_err());
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::UnknownClientStateType(ref url) if url == "/unknown.type"
+        ));
+    }
+
+    #[test]
+    fn test_client_state_build_context() {
+        let client_state = create_test_client_state();
+        let now = Time::from_unix_timestamp_nanos(1_000_000_000_000_000_000).unwrap();
+        let _ctx = client_state.build_context(now);
+        // If it doesn't panic, the context was built successfully
+    }
+
+    #[test]
+    fn test_client_state_with_frozen_height() {
+        let state = create_test_client_state();
+        assert!(!state.is_frozen());
+
+        let frozen = state.with_frozen_height(Height::new(0, 100));
+        assert!(frozen.is_frozen());
+        assert_eq!(frozen.frozen_height, Some(Height::new(0, 100)));
+    }
+}
+
+/// Integration tests for check_header_and_update_state
+#[cfg(test)]
+mod integration_tests {
+    use super::*;
+    use crate::consensus_state::ConsensusState;
+    use crate::header::Header;
+    use crate::test_utils::{
+        account_proof, create_test_client_state_from_ctx, to_consensus_update_info,
+        TestClientState, TestFixture,
+    };
+    use ethereum_consensus::compute::compute_timestamp_at_slot;
+    use ethereum_light_client_types::consensus::{
+        AccountUpdateInfo, ExecutionUpdateInfo,
+        TrustedSyncCommittee as EthTrustedSyncCommittee,
+    };
+    use ethereum_light_client_types::time::new_timestamp;
+    use ethereum_light_client_verifier::updates::ConsensusUpdate;
+
+    #[test]
+    fn test_check_header_and_update_state_basic() {
+        let fixture = TestFixture::new();
+        let dummy_execution_state_root: H256 = [1u8; 32].into();
+        let dummy_execution_block_number = 100u64;
+
+        let (update, _) = fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
+        let update_info = to_consensus_update_info(update);
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        // Create consensus state with timestamp before the header timestamp
+        let consensus_state = ConsensusState {
+            slot: Slot::from(1u64),
+            storage_root: dummy_execution_state_root,
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
+            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+        };
+
+        // Create header
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.next_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info.clone(),
+            execution_update: ExecutionUpdateInfo {
+                state_root: dummy_execution_state_root,
+                block_number: dummy_execution_block_number.into(),
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: new_timestamp(timestamp_secs).unwrap(),
+        };
+
+        let client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+        let result = client_state.check_header_and_update_state(now, &consensus_state, header);
+
+        // Note: This will fail verification because we don't have valid account proofs
+        // but it tests the flow up to that point
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_check_header_and_update_state_zero_timestamp() {
+        let fixture = TestFixture::new();
+        let dummy_execution_state_root: H256 = [1u8; 32].into();
+        let dummy_execution_block_number = 100u64;
+
+        let (update, _) = fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
+        let update_info = to_consensus_update_info(update);
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        let consensus_state = ConsensusState {
+            slot: Slot::from(1u64),
+            storage_root: dummy_execution_state_root,
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
+            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+        };
+
+        // Test that header validation with zero timestamp fails
+        let header_zero_timestamp = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.next_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info.clone(),
+            execution_update: ExecutionUpdateInfo {
+                state_root: dummy_execution_state_root,
+                block_number: dummy_execution_block_number.into(),
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: Time::from_unix_timestamp_nanos(0).unwrap(),
+        };
+
+        let client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+        let result = client_state.check_header_and_update_state(
+            now,
+            &consensus_state,
+            header_zero_timestamp,
+        );
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::ZeroTimestamp));
+    }
+
+    #[test]
+    fn test_check_header_and_update_state_zero_block_number() {
+        let fixture = TestFixture::new();
+        let dummy_execution_state_root: H256 = [1u8; 32].into();
+        let dummy_execution_block_number = 100u64;
+
+        let (update, _) = fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
+        let update_info = to_consensus_update_info(update);
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        let consensus_state = ConsensusState {
+            slot: Slot::from(1u64),
+            storage_root: dummy_execution_state_root,
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
+            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+        };
+
+        // Header with zero block number
+        let header_zero_block = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.next_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info.clone(),
+            execution_update: ExecutionUpdateInfo {
+                state_root: dummy_execution_state_root,
+                block_number: U64(0), // Zero block number
+                ..Default::default()
+            },
+            account_update: AccountUpdateInfo::default(),
+            timestamp: new_timestamp(timestamp_secs).unwrap(),
+        };
+
+        let client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+        let result = client_state.check_header_and_update_state(
+            now,
+            &consensus_state,
+            header_zero_block,
+        );
+
+        assert!(result.is_err());
+        assert!(matches!(result.unwrap_err(), Error::ZeroBlockNumber));
+    }
+
+    #[test]
+    fn test_check_header_with_valid_account_proof() {
+        use ethereum_light_client_types::commitment::verify_account_storage;
+
+        let client_state = TestClientState {
+            ibc_address: account_proof::get_address(),
+            execution_verifier: Default::default(),
+            ..Default::default()
+        };
+
+        let account_update = AccountUpdateInfo {
+            account_proof: account_proof::get_proof(),
+            account_storage_root: account_proof::get_storage_root(),
+        };
+
+        // Verify account storage works with valid proofs
+        let result = verify_account_storage(
+            &client_state.execution_verifier,
+            account_proof::get_state_root(),
+            &client_state.ibc_address,
+            &account_update,
+        );
+
+        assert!(result.is_ok(), "Account storage verification failed: {:?}", result);
+    }
+
+    #[test]
+    fn test_check_header_with_invalid_account_proof() {
+        use ethereum_light_client_types::commitment::verify_account_storage;
+
+        let client_state = TestClientState {
+            ibc_address: account_proof::get_address(),
+            execution_verifier: Default::default(),
+            ..Default::default()
+        };
+
+        // Invalid proof (random bytes)
+        let account_update = AccountUpdateInfo {
+            account_proof: vec![vec![1, 2, 3]],
+            account_storage_root: account_proof::get_storage_root(),
+        };
+
+        let result = verify_account_storage(
+            &client_state.execution_verifier,
+            account_proof::get_state_root(),
+            &client_state.ibc_address,
+            &account_update,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_check_header_with_mismatched_storage_root() {
+        use ethereum_light_client_types::commitment::verify_account_storage;
+
+        let client_state = TestClientState {
+            ibc_address: account_proof::get_address(),
+            execution_verifier: Default::default(),
+            ..Default::default()
+        };
+
+        // Wrong storage root
+        let account_update = AccountUpdateInfo {
+            account_proof: account_proof::get_proof(),
+            account_storage_root: H256::from_slice(&[0xaa; 32]),
+        };
+
+        let result = verify_account_storage(
+            &client_state.execution_verifier,
+            account_proof::get_state_root(),
+            &client_state.ibc_address,
+            &account_update,
+        );
+
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_check_header_and_update_state_success() {
+        let fixture = TestFixture::new();
+
+        // Use the real state_root from the test account proof
+        let execution_state_root = account_proof::get_state_root();
+        let dummy_execution_block_number = 100u64;
+
+        let (update, execution_update) = fixture.gen_update(execution_state_root, dummy_execution_block_number);
+        let update_info = to_consensus_update_info(update);
+        let execution_update_info = ExecutionUpdateInfo {
+            state_root: execution_update.state_root,
+            state_root_branch: execution_update.state_root_branch,
+            block_number: execution_update.block_number,
+            block_number_branch: execution_update.block_number_branch,
+            block_hash: H256::default(),
+            block_hash_branch: vec![],
+            rlp: vec![],
+        };
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        // Create consensus state with slot in period 1 (same as signature period)
+        let consensus_state_slot = fixture.period_1 + 1;
+        let consensus_state = ConsensusState {
+            slot: consensus_state_slot.into(),
+            storage_root: account_proof::get_storage_root(),
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
+            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+        };
+
+        // Create header with matching account proof
+        // Note: is_next: false because the signature was created by current_sync_committee
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            consensus_update: update_info.clone(),
+            execution_update: execution_update_info,
+            account_update: AccountUpdateInfo {
+                account_proof: account_proof::get_proof(),
+                account_storage_root: account_proof::get_storage_root(),
+            },
+            timestamp: new_timestamp(timestamp_secs).unwrap(),
+        };
+
+        // Create client state with the correct IBC address for the account proof
+        let mut client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        client_state.ibc_address = account_proof::get_address();
+
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+        let result = client_state.check_header_and_update_state(now, &consensus_state, header);
+
+        // This should succeed!
+        assert!(result.is_ok(), "check_header_and_update_state failed: {:?}", result);
+
+        let (new_client_state, new_consensus_state) = result.unwrap();
+
+        // Verify the state was updated correctly
+        assert_eq!(
+            new_client_state.latest_execution_block_number,
+            dummy_execution_block_number.into()
+        );
+        // The storage root in consensus_state is updated from the execution_update
+        assert_eq!(new_consensus_state.storage_root, execution_state_root);
+    }
+}
