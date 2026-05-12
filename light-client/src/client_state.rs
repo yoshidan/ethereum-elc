@@ -694,22 +694,27 @@ pub(crate) mod tests {
     }
 }
 
-/// Integration tests for check_header_and_update_state
+/// Integration tests for check_header_and_update_state and check_misbehaviour_and_update_state
 #[cfg(test)]
 mod integration_tests {
     use super::*;
     use crate::consensus_state::ConsensusState;
     use crate::header::Header;
+    use crate::misbehaviour::Misbehaviour;
     use crate::test_utils::{
         account_proof, create_test_client_state_from_ctx, to_consensus_update_info,
         TestClientState, TestFixture,
     };
+    use core::str::FromStr;
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_light_client_types::consensus::{
         AccountUpdateInfo, ExecutionUpdateInfo,
         TrustedSyncCommittee as EthTrustedSyncCommittee,
     };
     use ethereum_light_client_types::time::new_timestamp;
+    use ethereum_light_client_verifier::misbehaviour::{
+        FinalizedHeaderMisbehaviour, Misbehaviour as MisbehaviourData,
+    };
     use ethereum_light_client_verifier::updates::ConsensusUpdate;
 
     #[test]
@@ -1000,5 +1005,203 @@ mod integration_tests {
         );
         // The storage root in consensus_state is updated from the execution_update
         assert_eq!(new_consensus_state.storage_root, execution_state_root);
+    }
+
+    // ========================================================================
+    // Tests for check_misbehaviour_and_update_state
+    // ========================================================================
+
+    #[test]
+    fn test_check_misbehaviour_client_id_mismatch() {
+        let fixture = TestFixture::new();
+        let dummy_execution_state_root: H256 = [1u8; 32].into();
+
+        let (update_1, _) = fixture.gen_update(dummy_execution_state_root, 100);
+        let (update_2, _) = fixture.gen_update([2u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+        let finalized_slot = update_info_1.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        let consensus_state = ConsensusState {
+            slot: (fixture.period_1 + 1).into(),
+            storage_root: dummy_execution_state_root,
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+        };
+
+        // Misbehaviour with different client_id
+        let misbehaviour = Misbehaviour {
+            client_id: ClientId::from_str("ethereum-999").unwrap(), // Different client_id
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        let client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        let expected_client_id = ClientId::from_str("ethereum-0").unwrap();
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+
+        let result = client_state.check_misbehaviour_and_update_state(
+            now,
+            &expected_client_id,
+            &consensus_state,
+            misbehaviour,
+        );
+
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            Error::UnexpectedClientIdInMisbehaviour { expected, actual } => {
+                assert_eq!(expected.as_str(), "ethereum-0");
+                assert_eq!(actual.as_str(), "ethereum-999");
+            }
+            e => panic!("Unexpected error: {:?}", e),
+        }
+    }
+
+    #[test]
+    fn test_check_misbehaviour_and_update_state_success() {
+        let fixture = TestFixture::new();
+
+        // Create two updates with different execution state roots at the same finalized slot
+        // This constitutes a finalized header misbehaviour
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        let (update_2, _) = fixture.gen_update([2u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+        let finalized_slot = update_info_1.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        let consensus_state = ConsensusState {
+            slot: (fixture.period_1 + 1).into(),
+            storage_root: [1u8; 32].into(),
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+        };
+
+        let trusted_height = Height::new(0, 50);
+        let misbehaviour = Misbehaviour {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: trusted_height,
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        let client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        assert!(!client_state.is_frozen());
+
+        let client_id = ClientId::from_str("ethereum-0").unwrap();
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+
+        let result = client_state.check_misbehaviour_and_update_state(
+            now,
+            &client_id,
+            &consensus_state,
+            misbehaviour,
+        );
+
+        // Misbehaviour should be detected and client should be frozen
+        assert!(result.is_ok(), "check_misbehaviour_and_update_state failed: {:?}", result);
+
+        let frozen_client_state = result.unwrap();
+        assert!(frozen_client_state.is_frozen());
+        assert_eq!(frozen_client_state.frozen_height, Some(trusted_height));
+    }
+
+    #[test]
+    fn test_check_misbehaviour_trusting_period_expired() {
+        let fixture = TestFixture::new();
+
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        let (update_2, _) = fixture.gen_update([2u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+        let finalized_slot = update_info_1.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        // Create consensus state with old timestamp (outside trusting period)
+        let old_timestamp_secs = timestamp_secs - (60 * 60 * 24 * 8); // 8 days ago
+        let consensus_state = ConsensusState {
+            slot: (fixture.period_1 + 1).into(),
+            storage_root: [1u8; 32].into(),
+            timestamp: new_timestamp(old_timestamp_secs).unwrap(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+        };
+
+        let misbehaviour = Misbehaviour {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 50),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        let client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        let client_id = ClientId::from_str("ethereum-0").unwrap();
+        // Now is much later than consensus_state.timestamp
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+
+        let result = client_state.check_misbehaviour_and_update_state(
+            now,
+            &client_id,
+            &consensus_state,
+            misbehaviour,
+        );
+
+        // Should fail due to trusting period expiration
+        assert!(result.is_err());
+        // The error comes from validate_state_timestamp_within_trusting_period
+        // which returns EthereumLightClientTypes error
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::EthereumLightClientTypes(_)
+        ));
     }
 }

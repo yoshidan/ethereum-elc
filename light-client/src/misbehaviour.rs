@@ -167,7 +167,10 @@ fn decode_next_sync_committee_misbehaviour<const SYNC_COMMITTEE_SIZE: usize, B: 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
     use alloc::string::ToString;
+    use light_client::types::Height;
+    use prost::Message;
 
     #[test]
     fn test_misbehaviour_type_urls() {
@@ -187,7 +190,7 @@ mod tests {
             type_url: "/unknown.misbehaviour".to_string(),
             value: vec![],
         };
-        let result = Misbehaviour::<512>::try_from(any);
+        let result = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(any);
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
@@ -201,7 +204,7 @@ mod tests {
             type_url: ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL.to_string(),
             value: vec![0x00, 0x01, 0x02], // invalid protobuf data
         };
-        let result = Misbehaviour::<512>::try_from(any);
+        let result = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(any);
         assert!(result.is_err());
     }
 
@@ -211,7 +214,190 @@ mod tests {
             type_url: ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL.to_string(),
             value: vec![0x00, 0x01, 0x02], // invalid protobuf data
         };
-        let result = Misbehaviour::<512>::try_from(any);
+        let result = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(any);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_misbehaviour_validate_success() {
+        let fixture = TestFixture::new();
+
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        let (update_2, _) = fixture.gen_update([2u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+
+        let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: TrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        let result = misbehaviour.validate();
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_next_sync_committee_misbehaviour_proto_roundtrip() {
+        let fixture = TestFixture::new();
+
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        // Use different next sync committee for misbehaviour
+        let (update_2, _) = TestFixture::new().gen_update([1u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+
+        let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: TrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::NextSyncCommittee(NextSyncCommitteeMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        // Convert to raw proto
+        let raw: RawNextSyncCommitteeMisbehaviour = misbehaviour.clone().into();
+
+        // Encode to bytes
+        let mut buf = Vec::new();
+        raw.encode(&mut buf).unwrap();
+
+        // Decode from bytes
+        let decoded_raw = RawNextSyncCommitteeMisbehaviour::decode(buf.as_slice()).unwrap();
+
+        // Convert back to Misbehaviour
+        let decoded = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(decoded_raw).unwrap();
+
+        assert_eq!(misbehaviour, decoded);
+    }
+
+    #[test]
+    fn test_finalized_header_misbehaviour_proto_roundtrip() {
+        let fixture = TestFixture::new();
+
+        // Two updates with different execution state roots (same slot) = finalized header misbehaviour
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        let (update_2, _) = fixture.gen_update([2u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+
+        let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: TrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        // Convert to raw proto
+        let raw: RawFinalizedHeaderMisbehaviour = misbehaviour.clone().into();
+
+        // Encode to bytes
+        let mut buf = Vec::new();
+        raw.encode(&mut buf).unwrap();
+
+        // Decode from bytes
+        let decoded_raw = RawFinalizedHeaderMisbehaviour::decode(buf.as_slice()).unwrap();
+
+        // Convert back to Misbehaviour
+        let decoded = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(decoded_raw).unwrap();
+
+        assert_eq!(misbehaviour, decoded);
+    }
+
+    #[test]
+    fn test_misbehaviour_from_ibc_any_finalized_header() {
+        let fixture = TestFixture::new();
+
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        let (update_2, _) = fixture.gen_update([2u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+
+        let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: TrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        // Convert to IBCAny
+        let raw: RawFinalizedHeaderMisbehaviour = misbehaviour.clone().into();
+        let mut buf = Vec::new();
+        raw.encode(&mut buf).unwrap();
+
+        let any = IBCAny {
+            type_url: ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL.to_string(),
+            value: buf,
+        };
+
+        // Decode from IBCAny
+        let decoded = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(any).unwrap();
+        assert_eq!(misbehaviour, decoded);
+    }
+
+    #[test]
+    fn test_misbehaviour_from_ibc_any_next_sync_committee() {
+        let fixture = TestFixture::new();
+
+        let (update_1, _) = fixture.gen_update([1u8; 32].into(), 100);
+        let (update_2, _) = TestFixture::new().gen_update([1u8; 32].into(), 100);
+
+        let update_info_1 = to_consensus_update_info(update_1);
+        let update_info_2 = to_consensus_update_info(update_2);
+
+        let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
+            client_id: ClientId::from_str("ethereum-0").unwrap(),
+            trusted_sync_committee: TrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: false,
+            },
+            data: MisbehaviourData::NextSyncCommittee(NextSyncCommitteeMisbehaviour {
+                consensus_update_1: update_info_1,
+                consensus_update_2: update_info_2,
+            }),
+        };
+
+        // Convert to IBCAny
+        let raw: RawNextSyncCommitteeMisbehaviour = misbehaviour.clone().into();
+        let mut buf = Vec::new();
+        raw.encode(&mut buf).unwrap();
+
+        let any = IBCAny {
+            type_url: ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL.to_string(),
+            value: buf,
+        };
+
+        // Decode from IBCAny
+        let decoded = Misbehaviour::<SYNC_COMMITTEE_SIZE>::try_from(any).unwrap();
+        assert_eq!(misbehaviour, decoded);
     }
 }

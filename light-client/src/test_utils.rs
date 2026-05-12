@@ -32,9 +32,11 @@ pub const DEFAULT_GENESIS_TIME: u64 = 1577836800;
 
 /// Creates a LightClientContext with the given parameters.
 pub fn create_light_client_context(genesis_time: u64, current_time: u64) -> LightClientContext {
+    // Use a non-zero genesis_validators_root for valid client state
+    let genesis_validators_root = H256::from_slice(&[1u8; 32]);
     LightClientContext::new_with_config(
         config::minimal::get_config(),
-        Default::default(),
+        genesis_validators_root,
         genesis_time.into(),
         Fraction::new(2, 3).unwrap(),
         current_time.into(),
@@ -43,9 +45,11 @@ pub fn create_light_client_context(genesis_time: u64, current_time: u64) -> Ligh
 
 /// Creates a simple LightClientContext with default genesis time.
 pub fn create_simple_context(now_secs: u64) -> LightClientContext {
+    // Use a non-zero genesis_validators_root for valid client state
+    let genesis_validators_root = H256::from_slice(&[1u8; 32]);
     LightClientContext::new_with_config(
         config::minimal::get_config(),
-        Default::default(),
+        genesis_validators_root,
         Default::default(),
         Fraction::new(2, 3).unwrap(),
         now_secs.into(),
@@ -219,6 +223,8 @@ pub fn create_test_client_state_from_ctx(ctx: &LightClientContext) -> TestClient
         seconds_per_slot: PRESET.SECONDS_PER_SLOT,
         slots_per_epoch: PRESET.SLOTS_PER_EPOCH,
         epochs_per_sync_committee_period: PRESET.EPOCHS_PER_SYNC_COMMITTEE_PERIOD,
+        ibc_address: account_proof::get_address(),
+        ibc_commitments_slot: H256::from_slice(&[2u8; 32]),
         trust_level: Fraction::new(2, 3).unwrap(),
         trusting_period: Duration::from_secs(60 * 60 * 24 * 7), // 1 week
         max_clock_drift: Duration::from_secs(60 * 10),          // 10 minutes
