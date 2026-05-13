@@ -1,12 +1,9 @@
 use crate::errors::Error;
 use crate::internal_prelude::*;
-use ethereum_consensus::types::H256;
+use ethereum_consensus::types::{H256, U64};
 use ethereum_consensus::{
-    beacon::Slot,
-    bls::PublicKey,
-    compute::compute_sync_committee_period_at_slot,
-    context::ChainContext,
-    sync_protocol::{SyncCommittee, SyncCommitteePeriod},
+    beacon::Slot, bls::PublicKey, compute::compute_sync_committee_period_at_slot,
+    context::ChainContext, sync_protocol::SyncCommitteePeriod,
 };
 use ethereum_elc_proto::{
     google::protobuf::Timestamp as ProtoTimestamp,
@@ -15,7 +12,6 @@ use ethereum_elc_proto::{
 use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
 use ethereum_light_client_types::consensus_state::ConsensusState as EthConsensusState;
 use ethereum_light_client_types::update::TrustedSyncCommitteeInfo;
-use ethereum_light_client_verifier::{state::LightClientStoreReader, updates::ConsensusUpdate};
 use light_client::types::{Any, Time};
 use prost::Message;
 
@@ -49,8 +45,8 @@ impl Default for ConsensusState {
     }
 }
 
-impl<CC: ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
-    fn current_period(&self, ctx: &CC) -> SyncCommitteePeriod {
+impl TrustedSyncCommitteeInfo for ConsensusState {
+    fn current_period<C: ChainContext>(&self, ctx: &C) -> SyncCommitteePeriod {
         compute_sync_committee_period_at_slot(ctx, self.slot)
     }
 
@@ -60,6 +56,10 @@ impl<CC: ChainContext> TrustedSyncCommitteeInfo<CC> for ConsensusState {
 
     fn next_sync_committee(&self) -> PublicKey {
         self.next_sync_committee.clone()
+    }
+
+    fn is_relevant_update(&self, update_finalized_slot: U64) -> bool {
+        self.slot < update_finalized_slot
     }
 }
 
@@ -193,90 +193,6 @@ impl TryFrom<Any> for ConsensusState {
     }
 }
 
-#[derive(Debug, Clone, Default, PartialEq, Eq)]
-pub struct TrustedConsensusState<const SYNC_COMMITTEE_SIZE: usize> {
-    state: ConsensusState,
-    current_sync_committee: Option<SyncCommittee<SYNC_COMMITTEE_SIZE>>,
-    next_sync_committee: Option<SyncCommittee<SYNC_COMMITTEE_SIZE>>,
-}
-
-impl<const SYNC_COMMITTEE_SIZE: usize> TrustedConsensusState<SYNC_COMMITTEE_SIZE> {
-    pub fn new(
-        consensus_state: ConsensusState,
-        sync_committee: SyncCommittee<SYNC_COMMITTEE_SIZE>,
-        is_next: bool,
-    ) -> Result<Self, Error> {
-        sync_committee.validate()?;
-        if !is_next {
-            return if sync_committee.aggregate_pubkey == consensus_state.current_sync_committee {
-                Ok(Self {
-                    state: consensus_state,
-                    current_sync_committee: Some(sync_committee),
-                    next_sync_committee: None,
-                })
-            } else {
-                Err(Error::InvalidCurrentSyncCommitteeKeys {
-                    expected: sync_committee.aggregate_pubkey,
-                    actual: consensus_state.current_sync_committee,
-                })
-            };
-        }
-
-        if sync_committee.aggregate_pubkey == consensus_state.next_sync_committee {
-            Ok(Self {
-                state: consensus_state,
-                current_sync_committee: None,
-                next_sync_committee: Some(sync_committee),
-            })
-        } else {
-            Err(Error::InvalidNextSyncCommitteeKeys {
-                expected: sync_committee.aggregate_pubkey,
-                actual: consensus_state.next_sync_committee,
-            })
-        }
-    }
-}
-
-impl<const SYNC_COMMITTEE_SIZE: usize> LightClientStoreReader<SYNC_COMMITTEE_SIZE>
-    for TrustedConsensusState<SYNC_COMMITTEE_SIZE>
-{
-    fn current_period<C: ChainContext>(&self, ctx: &C) -> SyncCommitteePeriod {
-        self.state.current_period(ctx)
-    }
-
-    fn current_sync_committee(&self) -> Option<SyncCommittee<SYNC_COMMITTEE_SIZE>> {
-        self.current_sync_committee.clone()
-    }
-
-    fn next_sync_committee(&self) -> Option<SyncCommittee<SYNC_COMMITTEE_SIZE>> {
-        self.next_sync_committee.clone()
-    }
-
-    fn ensure_relevant_update<CC: ChainContext, C: ConsensusUpdate<SYNC_COMMITTEE_SIZE>>(
-        &self,
-        _ctx: &CC,
-        update: &C,
-    ) -> Result<(), ethereum_light_client_verifier::errors::Error> {
-        if self.state.slot >= update.finalized_beacon_header().slot {
-            Err(
-                ethereum_light_client_verifier::errors::Error::IrrelevantConsensusUpdates(
-                    "finalized header slot is not greater than current slot".to_string(),
-                ),
-            )
-        } else {
-            Ok(())
-        }
-    }
-}
-
-impl<const SYNC_COMMITTEE_SIZE: usize> From<TrustedConsensusState<SYNC_COMMITTEE_SIZE>>
-    for ConsensusState
-{
-    fn from(value: TrustedConsensusState<SYNC_COMMITTEE_SIZE>) -> Self {
-        value.state
-    }
-}
-
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
@@ -394,14 +310,6 @@ pub(crate) mod tests {
             result.unwrap_err(),
             Error::UninitializedConsensusStateField("next_sync_committee")
         ));
-    }
-
-    #[test]
-    fn test_trusted_consensus_state_default() {
-        let state = TrustedConsensusState::<32>::default();
-        assert_eq!(state.state, ConsensusState::default());
-        assert!(state.current_sync_committee.is_none());
-        assert!(state.next_sync_committee.is_none());
     }
 
     #[test]

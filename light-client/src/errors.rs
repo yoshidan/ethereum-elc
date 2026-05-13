@@ -137,4 +137,3 @@ impl From<light_client::Error> for Error {
         Error::LightClient(e)
     }
 }
-

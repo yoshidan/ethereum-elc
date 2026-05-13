@@ -366,7 +366,7 @@ mod tests {
 
     fn create_test_consensus_state(fixture: &TestFixture, timestamp: u64) -> ConsensusState {
         ConsensusState {
-            slot: fixture.period_1.into(),
+            slot: fixture.period_1,
             storage_root: account_proof::get_storage_root(),
             timestamp: new_timestamp(timestamp).unwrap(),
             current_sync_committee: fixture
@@ -523,7 +523,12 @@ mod tests {
         let any_consensus_state: Any = consensus_state.try_into().unwrap();
 
         let mut mock_ctx = MockHostContext::new(Time::unix_epoch());
-        mock_ctx.setup_client(&client_id, any_client_state, any_consensus_state, proof_height);
+        mock_ctx.setup_client(
+            &client_id,
+            any_client_state,
+            any_consensus_state,
+            proof_height,
+        );
 
         let client = EthereumLightClient::<SYNC_COMMITTEE_SIZE>;
         let result = client.verify_membership(
@@ -553,7 +558,12 @@ mod tests {
         let any_consensus_state: Any = consensus_state.try_into().unwrap();
 
         let mut mock_ctx = MockHostContext::new(Time::unix_epoch());
-        mock_ctx.setup_client(&client_id, any_client_state, any_consensus_state, proof_height);
+        mock_ctx.setup_client(
+            &client_id,
+            any_client_state,
+            any_consensus_state,
+            proof_height,
+        );
 
         let client = EthereumLightClient::<SYNC_COMMITTEE_SIZE>;
         let result = client.verify_non_membership(
@@ -581,7 +591,7 @@ mod tests {
 
         let consensus_state_slot = fixture.period_1 + 1;
         let consensus_state = ConsensusState {
-            slot: consensus_state_slot.into(),
+            slot: consensus_state_slot,
             storage_root: account_proof::get_storage_root(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -657,7 +667,7 @@ mod tests {
 
         let consensus_state_slot = fixture.period_1 + 1;
         let consensus_state = ConsensusState {
-            slot: consensus_state_slot.into(),
+            slot: consensus_state_slot,
             storage_root: account_proof::get_storage_root(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -742,7 +752,7 @@ mod tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let consensus_state = ConsensusState {
-            slot: (fixture.period_1 + 1).into(),
+            slot: fixture.period_1 + 1,
             storage_root: [1u8; 32].into(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -809,7 +819,7 @@ mod tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let consensus_state = ConsensusState {
-            slot: (fixture.period_1 + 1).into(),
+            slot: fixture.period_1 + 1,
             storage_root: [1u8; 32].into(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -856,14 +866,9 @@ mod tests {
 
         let any_message = Any::new("dummy".to_string(), vec![]);
         let client = EthereumLightClient::<SYNC_COMMITTEE_SIZE>;
-        let result =
-            client.submit_misbehaviour(&mock_ctx, client_id, any_message, misbehaviour);
+        let result = client.submit_misbehaviour(&mock_ctx, client_id, any_message, misbehaviour);
 
-        assert!(
-            result.is_ok(),
-            "submit_misbehaviour failed: {:?}",
-            result
-        );
+        assert!(result.is_ok(), "submit_misbehaviour failed: {:?}", result);
 
         // Verify the returned client state is frozen
         let misbehaviour_data = result.unwrap();
@@ -877,9 +882,7 @@ mod tests {
 
     #[test]
     fn test_update_client_with_misbehaviour() {
-        use crate::misbehaviour::{
-            ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
-        };
+        use crate::misbehaviour::ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL;
         use ethereum_elc_proto::ibc::lightclients::ethereum::v1::FinalizedHeaderMisbehaviour as RawFinalizedHeaderMisbehaviour;
         use ethereum_light_client_types::consensus::convert_consensus_update_to_proto;
         use prost::Message;
@@ -895,7 +898,7 @@ mod tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let consensus_state = ConsensusState {
-            slot: (fixture.period_1 + 1).into(),
+            slot: fixture.period_1 + 1,
             storage_root: [1u8; 32].into(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -949,7 +952,11 @@ mod tests {
         let client = EthereumLightClient::<SYNC_COMMITTEE_SIZE>;
         let result = client.update_client(&mock_ctx, client_id, any_message);
 
-        assert!(result.is_ok(), "update_client with misbehaviour failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "update_client with misbehaviour failed: {:?}",
+            result
+        );
 
         // Verify the result contains frozen client state
         match result.unwrap() {

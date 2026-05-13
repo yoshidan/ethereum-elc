@@ -136,16 +136,15 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Header<SYNC_COMMITTEE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use alloc::string::ToString;
     use crate::misbehaviour::{
         ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
         ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
     };
     use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
+    use alloc::string::ToString;
     use ethereum_consensus::types::U64;
     use ethereum_light_client_types::consensus::{
-        AccountUpdateInfo, ExecutionUpdateInfo,
-        TrustedSyncCommittee as EthTrustedSyncCommittee,
+        AccountUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee as EthTrustedSyncCommittee,
     };
     use ethereum_light_client_verifier::updates::ConsensusUpdate;
     use light_client::types::Height;

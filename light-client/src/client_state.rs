@@ -1,4 +1,4 @@
-use crate::consensus_state::{ConsensusState, TrustedConsensusState};
+use crate::consensus_state::ConsensusState;
 use crate::errors::Error;
 use crate::header::Header;
 use crate::misbehaviour::Misbehaviour;
@@ -21,6 +21,7 @@ use ethereum_light_client_types::time::{
     validate_header_timestamp_not_future, validate_state_timestamp_within_trusting_period,
 };
 use ethereum_light_client_types::update::compute_sync_committees;
+use ethereum_light_client_types::update::TrustedConsensusState;
 use ethereum_light_client_verifier::consensus::SyncProtocolVerifier;
 use ethereum_light_client_verifier::context::{
     ChainConsensusVerificationContext, Fraction, LightClientContext,
@@ -77,8 +78,10 @@ pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
 
     // Verifiers
     #[serde(skip)]
-    pub consensus_verifier:
-        SyncProtocolVerifier<SYNC_COMMITTEE_SIZE, TrustedConsensusState<SYNC_COMMITTEE_SIZE>>,
+    pub consensus_verifier: SyncProtocolVerifier<
+        SYNC_COMMITTEE_SIZE,
+        TrustedConsensusState<SYNC_COMMITTEE_SIZE, ConsensusState>,
+    >,
     #[serde(skip)]
     pub execution_verifier: ExecutionVerifier,
 }
@@ -544,8 +547,10 @@ pub(crate) mod tests {
 
     #[test]
     fn test_client_state_latest_height() {
-        let mut state = TestClientState::default();
-        state.latest_execution_block_number = U64(12345);
+        let state = TestClientState {
+            latest_execution_block_number: U64(12345),
+            ..Default::default()
+        };
 
         let height = state.latest_height();
         assert_eq!(height.revision_number(), ETHEREUM_CLIENT_REVISION_NUMBER);
@@ -554,9 +559,11 @@ pub(crate) mod tests {
 
     #[test]
     fn test_client_state_canonicalize() {
-        let mut state = TestClientState::default();
-        state.latest_execution_block_number = U64(12345);
-        state.frozen_height = Some(Height::new(0, 100));
+        let state = TestClientState {
+            latest_execution_block_number: U64(12345),
+            frozen_height: Some(Height::new(0, 100)),
+            ..Default::default()
+        };
 
         let canonicalized = state.canonicalize();
         assert_eq!(canonicalized.latest_execution_block_number, U64(0));
@@ -708,8 +715,7 @@ mod integration_tests {
     use core::str::FromStr;
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_light_client_types::consensus::{
-        AccountUpdateInfo, ExecutionUpdateInfo,
-        TrustedSyncCommittee as EthTrustedSyncCommittee,
+        AccountUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee as EthTrustedSyncCommittee,
     };
     use ethereum_light_client_types::time::new_timestamp;
     use ethereum_light_client_verifier::misbehaviour::{
@@ -723,7 +729,8 @@ mod integration_tests {
         let dummy_execution_state_root: H256 = [1u8; 32].into();
         let dummy_execution_block_number = 100u64;
 
-        let (update, _) = fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
+        let (update, _) =
+            fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
         let update_info = to_consensus_update_info(update);
         let finalized_slot = update_info.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
@@ -733,8 +740,16 @@ mod integration_tests {
             slot: Slot::from(1u64),
             storage_root: dummy_execution_state_root,
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
-            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
         };
 
         // Create header
@@ -769,7 +784,8 @@ mod integration_tests {
         let dummy_execution_state_root: H256 = [1u8; 32].into();
         let dummy_execution_block_number = 100u64;
 
-        let (update, _) = fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
+        let (update, _) =
+            fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
         let update_info = to_consensus_update_info(update);
         let finalized_slot = update_info.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
@@ -778,8 +794,16 @@ mod integration_tests {
             slot: Slot::from(1u64),
             storage_root: dummy_execution_state_root,
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
-            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
         };
 
         // Test that header validation with zero timestamp fails
@@ -817,7 +841,8 @@ mod integration_tests {
         let dummy_execution_state_root: H256 = [1u8; 32].into();
         let dummy_execution_block_number = 100u64;
 
-        let (update, _) = fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
+        let (update, _) =
+            fixture.gen_update(dummy_execution_state_root, dummy_execution_block_number);
         let update_info = to_consensus_update_info(update);
         let finalized_slot = update_info.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
@@ -826,8 +851,16 @@ mod integration_tests {
             slot: Slot::from(1u64),
             storage_root: dummy_execution_state_root,
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
-            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
         };
 
         // Header with zero block number
@@ -849,11 +882,8 @@ mod integration_tests {
 
         let client_state = create_test_client_state_from_ctx(&fixture.ctx);
         let now = new_timestamp(timestamp_secs + 100).unwrap();
-        let result = client_state.check_header_and_update_state(
-            now,
-            &consensus_state,
-            header_zero_block,
-        );
+        let result =
+            client_state.check_header_and_update_state(now, &consensus_state, header_zero_block);
 
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::ZeroBlockNumber));
@@ -882,7 +912,11 @@ mod integration_tests {
             &account_update,
         );
 
-        assert!(result.is_ok(), "Account storage verification failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "Account storage verification failed: {:?}",
+            result
+        );
     }
 
     #[test]
@@ -945,7 +979,8 @@ mod integration_tests {
         let execution_state_root = account_proof::get_state_root();
         let dummy_execution_block_number = 100u64;
 
-        let (update, execution_update) = fixture.gen_update(execution_state_root, dummy_execution_block_number);
+        let (update, execution_update) =
+            fixture.gen_update(execution_state_root, dummy_execution_block_number);
         let update_info = to_consensus_update_info(update);
         let execution_update_info = ExecutionUpdateInfo {
             state_root: execution_update.state_root,
@@ -962,11 +997,19 @@ mod integration_tests {
         // Create consensus state with slot in period 1 (same as signature period)
         let consensus_state_slot = fixture.period_1 + 1;
         let consensus_state = ConsensusState {
-            slot: consensus_state_slot.into(),
+            slot: consensus_state_slot,
             storage_root: account_proof::get_storage_root(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture.current_sync_committee().to_committee().aggregate_pubkey.clone(),
-            next_sync_committee: fixture.next_sync_committee().to_committee().aggregate_pubkey.clone(),
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
         };
 
         // Create header with matching account proof
@@ -994,7 +1037,11 @@ mod integration_tests {
         let result = client_state.check_header_and_update_state(now, &consensus_state, header);
 
         // This should succeed!
-        assert!(result.is_ok(), "check_header_and_update_state failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "check_header_and_update_state failed: {:?}",
+            result
+        );
 
         let (new_client_state, new_consensus_state) = result.unwrap();
 
@@ -1025,7 +1072,7 @@ mod integration_tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let consensus_state = ConsensusState {
-            slot: (fixture.period_1 + 1).into(),
+            slot: fixture.period_1 + 1,
             storage_root: dummy_execution_state_root,
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -1090,7 +1137,7 @@ mod integration_tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let consensus_state = ConsensusState {
-            slot: (fixture.period_1 + 1).into(),
+            slot: fixture.period_1 + 1,
             storage_root: [1u8; 32].into(),
             timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
             current_sync_committee: fixture
@@ -1133,7 +1180,11 @@ mod integration_tests {
         );
 
         // Misbehaviour should be detected and client should be frozen
-        assert!(result.is_ok(), "check_misbehaviour_and_update_state failed: {:?}", result);
+        assert!(
+            result.is_ok(),
+            "check_misbehaviour_and_update_state failed: {:?}",
+            result
+        );
 
         let frozen_client_state = result.unwrap();
         assert!(frozen_client_state.is_frozen());
@@ -1155,7 +1206,7 @@ mod integration_tests {
         // Create consensus state with old timestamp (outside trusting period)
         let old_timestamp_secs = timestamp_secs - (60 * 60 * 24 * 8); // 8 days ago
         let consensus_state = ConsensusState {
-            slot: (fixture.period_1 + 1).into(),
+            slot: fixture.period_1 + 1,
             storage_root: [1u8; 32].into(),
             timestamp: new_timestamp(old_timestamp_secs).unwrap(),
             current_sync_committee: fixture

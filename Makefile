@@ -1,7 +1,7 @@
 ######## Proto ########
 
-IBC_GO_PATH ?= /Users/naohiro.yoshida/go/src/github.com/cosmos/ibc-go
-ETHEREUM_LIGHT_CLIENT_TYPES_PATH ?= /Users/naohiro.yoshida/go/src/github.com/datachainlab/ethereum-light-client-types
+IBC_GO_PATH ?= $$HOME/go/src/github.com/cosmos/ibc-go
+ETHEREUM_LIGHT_CLIENT_TYPES_PATH ?= $$HOME/go/src/github.com/datachainlab/ethereum-light-client-types
 
 .PHONY: proto
 proto:
