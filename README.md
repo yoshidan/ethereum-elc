@@ -2,9 +2,9 @@
 
 [![test](https://github.com/datachainlab/ethereum-elc/actions/workflows/test.yml/badge.svg)](https://github.com/datachainlab/ethereum-elc/actions/workflows/test.yml)
 
-`ethereum-elc` is an ELC(Enclave Light Client) implementation of Ethereum based on [ethereum-ibc-rs](https://github.com/datachainlab/ethereum-ibc-rs).
+`ethereum-elc` is an ELC(Enclave Light Client) implementation of Ethereum based on [ethereum-light-client-rs](https://github.com/datachainlab/ethereum-light-client-rs).
 
-The spec of the light client is [here](https://github.com/datachainlab/ethereum-ibc-rs/blob/main/README.md).
+The spec of the light client is [here](https://github.com/datachainlab/ethereum-light-client-rs/blob/main/README.md).
 
 ## Integration tests
 
