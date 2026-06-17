@@ -613,7 +613,6 @@ mod tests {
             block_number_branch: execution_update.block_number_branch,
             block_hash: H256::default(),
             block_hash_branch: vec![],
-            rlp: vec![],
         };
 
         let header = Header {
@@ -689,7 +688,6 @@ mod tests {
             block_number_branch: execution_update.block_number_branch,
             block_hash: H256::default(),
             block_hash_branch: vec![],
-            rlp: vec![],
         };
 
         let header = Header {

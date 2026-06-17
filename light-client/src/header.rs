@@ -4,7 +4,6 @@ use crate::misbehaviour::{
     ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
 };
 use bytes::Buf;
-use ethereum_consensus::compute::compute_timestamp_at_slot;
 use ethereum_consensus::context::ChainContext;
 use ethereum_consensus::types::U64;
 use ethereum_elc_proto::ibc::lightclients::ethereum::v1::Header as RawHeader;
@@ -13,7 +12,7 @@ use ethereum_light_client_types::consensus::{
     convert_proto_to_consensus_update, convert_proto_to_execution_update, AccountUpdateInfo,
     ConsensusUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee,
 };
-use ethereum_light_client_types::time::new_timestamp;
+use ethereum_light_client_types::time::{new_timestamp, validate_header_timestamp};
 use ethereum_light_client_verifier::updates::ConsensusUpdate;
 use light_client::types::Time;
 use prost::Message;
@@ -71,23 +70,14 @@ pub fn decode_header<const SYNC_COMMITTEE_SIZE: usize, B: Buf>(
 impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
     pub fn validate<C: ChainContext>(&self, ctx: &C) -> Result<(), Error> {
         self.trusted_sync_committee.validate()?;
-        if self.timestamp.as_unix_timestamp_nanos() == 0 {
-            return Err(Error::ZeroTimestamp);
-        }
         if self.execution_update.block_number == U64(0) {
             return Err(Error::ZeroBlockNumber);
         }
-        let header_timestamp_nanos = self.timestamp.as_unix_timestamp_nanos();
-        let spec_timestamp_nanos = new_timestamp(
-            compute_timestamp_at_slot(ctx, self.consensus_update.finalized_beacon_header().slot).0,
-        )?
-        .as_unix_timestamp_nanos();
-        if header_timestamp_nanos != spec_timestamp_nanos {
-            return Err(Error::UnexpectedTimestamp {
-                expected: spec_timestamp_nanos,
-                actual: header_timestamp_nanos,
-            });
-        }
+        validate_header_timestamp(
+            ctx,
+            self.consensus_update.finalized_beacon_header().slot,
+            self.timestamp,
+        )?;
         Ok(())
     }
 }
@@ -142,6 +132,7 @@ mod tests {
     };
     use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
     use alloc::string::ToString;
+    use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_consensus::types::U64;
     use ethereum_light_client_types::consensus::{
         AccountUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee as EthTrustedSyncCommittee,
@@ -249,7 +240,12 @@ mod tests {
 
         let result = header.validate(&fixture.ctx);
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::ZeroTimestamp));
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::EthereumLightClientTypes(
+                ethereum_light_client_types::errors::Error::ZeroTimestamp
+            )
+        ));
     }
 
     #[test]
@@ -310,7 +306,9 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            Error::UnexpectedTimestamp { .. }
+            Error::EthereumLightClientTypes(
+                ethereum_light_client_types::errors::Error::UnexpectedTimestamp { .. }
+            )
         ));
     }
 }

@@ -293,7 +293,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
                     execution_payload_state_root_gindex: spec.execution_payload_state_root_gindex,
                     execution_payload_block_number_gindex: spec
                         .execution_payload_block_number_gindex,
-                    execution_block_hash_gindex: spec.execution_block_hash_gindex,
                 })
             } else {
                 Err(EthError::proto_missing(&format!("forks[{}].spec", idx)).into())
@@ -378,7 +377,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<ClientState<SYNC_COMMITTEE_SIZE>> fo
                     execution_payload_state_root_gindex: spec.execution_payload_state_root_gindex,
                     execution_payload_block_number_gindex: spec
                         .execution_payload_block_number_gindex,
-                    execution_block_hash_gindex: spec.execution_block_hash_gindex,
                 }),
             }
         }
@@ -832,7 +830,12 @@ mod integration_tests {
         );
 
         assert!(result.is_err());
-        assert!(matches!(result.unwrap_err(), Error::ZeroTimestamp));
+        assert!(matches!(
+            result.unwrap_err(),
+            Error::EthereumLightClientTypes(
+                ethereum_light_client_types::errors::Error::ZeroTimestamp
+            )
+        ));
     }
 
     #[test]
@@ -989,7 +992,6 @@ mod integration_tests {
             block_number_branch: execution_update.block_number_branch,
             block_hash: H256::default(),
             block_hash_branch: vec![],
-            rlp: vec![],
         };
         let finalized_slot = update_info.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
