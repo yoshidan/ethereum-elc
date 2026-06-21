@@ -215,6 +215,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         // check if the header timestamp does not indicate a future time
         validate_header_timestamp_not_future(now, self.max_clock_drift, header_timestamp)?;
 
+        let finalized_slot = consensus_update.finalized_header.0.slot;
         let new_sync_committee = compute_sync_committees(&cc, consensus_state, consensus_update)?;
 
         // apply updates to state
@@ -223,6 +224,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             new_client_state.latest_execution_block_number = execution_update.block_number;
         }
         let mut new_consensus_state = consensus_state.clone();
+        new_consensus_state.slot = finalized_slot;
         new_consensus_state.storage_root = execution_update.state_root;
         new_consensus_state.timestamp = header_timestamp;
         new_consensus_state.current_sync_committee = new_sync_committee.current_sync_committee;
