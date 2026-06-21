@@ -101,7 +101,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawHeader> for Header<SYNC_COMMIT
         Ok(Self {
             trusted_sync_committee: trusted_sync_committee.try_into()?,
             consensus_update: convert_proto_to_consensus_update(consensus_update)?,
-            execution_update: convert_proto_to_execution_update(execution_update),
+            execution_update: convert_proto_to_execution_update(execution_update)?,
             account_update: account_update.try_into()?,
             timestamp,
         })
