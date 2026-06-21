@@ -6,6 +6,8 @@ use client::EthereumLightClient;
 use light_client::LightClientRegistry;
 extern crate alloc;
 
+pub use ethereum_consensus::preset;
+
 pub mod client;
 pub mod errors;
 pub mod state;
