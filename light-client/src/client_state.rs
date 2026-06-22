@@ -225,7 +225,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         }
         let mut new_consensus_state = consensus_state.clone();
         new_consensus_state.slot = finalized_slot;
-        new_consensus_state.storage_root = execution_update.state_root;
+        new_consensus_state.storage_root = account_update.account_storage_root;
         new_consensus_state.timestamp = header_timestamp;
         new_consensus_state.current_sync_committee = new_sync_committee.current_sync_committee;
         new_consensus_state.next_sync_committee = new_sync_committee.next_sync_committee;
@@ -1054,8 +1054,11 @@ mod integration_tests {
             new_client_state.latest_execution_block_number,
             dummy_execution_block_number.into()
         );
-        // The storage root in consensus_state is updated from the execution_update
-        assert_eq!(new_consensus_state.storage_root, execution_state_root);
+        // The storage root in consensus_state is the IBC contract's account storage root
+        assert_eq!(
+            new_consensus_state.storage_root,
+            account_proof::get_storage_root()
+        );
     }
 
     // ========================================================================
