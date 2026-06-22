@@ -37,6 +37,8 @@ pub enum Error {
     UninitializedConsensusStateField(&'static str),
     #[error("invalid raw consensus state: reason={reason}")]
     InvalidRawConsensusState { reason: String },
+    #[error("invalid raw client state: reason={reason}")]
+    InvalidRawClientState { reason: String },
     #[error("unknown consensus state type: type_url={type_url}")]
     UnknownConsensusStateType { type_url: String },
     #[error("invalid current sync committee keys: expected={expected:?} actual={actual:?}")]

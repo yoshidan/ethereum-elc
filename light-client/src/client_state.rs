@@ -278,11 +278,15 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
     type Error = Error;
 
     fn try_from(value: RawClientState) -> Result<Self, Self::Error> {
-        fn bytes_to_version(bz: Vec<u8>) -> Version {
-            assert_eq!(bz.len(), 4);
+        fn bytes_to_version(bz: Vec<u8>) -> Result<Version, Error> {
+            if bz.len() != 4 {
+                return Err(Error::InvalidRawClientState {
+                    reason: format!("invalid fork version length: {}", bz.len()),
+                });
+            }
             let mut version = Version::default();
             version.0.copy_from_slice(&bz);
-            version
+            Ok(version)
         }
 
         fn convert_fork_spec(idx: usize, spec: Option<RawForkSpec>) -> Result<ForkSpec, Error> {
@@ -305,14 +309,14 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
             .fork_parameters
             .ok_or(Error::proto_missing("fork_parameters"))?;
         let fork_parameters: ForkParameters = ForkParameters::new(
-            bytes_to_version(raw_fork_parameters.genesis_fork_version),
+            bytes_to_version(raw_fork_parameters.genesis_fork_version)?,
             raw_fork_parameters
                 .forks
                 .into_iter()
                 .enumerate()
                 .map(|(i, f)| -> Result<_, Error> {
                     Ok(ForkParameter::new(
-                        bytes_to_version(f.version),
+                        bytes_to_version(f.version)?,
                         f.epoch.into(),
                         convert_fork_spec(i, f.spec)?,
                     ))
@@ -326,6 +330,22 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
         let frozen_height = value
             .frozen_height
             .map(|h| Height::new(h.revision_number, h.revision_height));
+        if value.genesis_validators_root.len() != 32 {
+            return Err(Error::InvalidRawClientState {
+                reason: format!(
+                    "invalid genesis_validators_root length: {}",
+                    value.genesis_validators_root.len()
+                ),
+            });
+        }
+        if value.ibc_commitments_slot.len() != 32 {
+            return Err(Error::InvalidRawClientState {
+                reason: format!(
+                    "invalid ibc_commitments_slot length: {}",
+                    value.ibc_commitments_slot.len()
+                ),
+            });
+        }
         Ok(Self {
             genesis_validators_root: H256::from_slice(&value.genesis_validators_root),
             min_sync_committee_participants: value.min_sync_committee_participants.into(),

@@ -119,6 +119,11 @@ impl TryFrom<RawConsensusState> for ConsensusState {
             .ok_or_else(|| Error::InvalidRawConsensusState {
                 reason: "timestamp is none".to_string(),
             })?;
+        if value.storage_root.len() != 32 {
+            return Err(Error::InvalidRawConsensusState {
+                reason: format!("invalid storage_root length: {}", value.storage_root.len()),
+            });
+        }
         Ok(Self {
             slot: value.slot.into(),
             storage_root: H256::from_slice(value.storage_root.as_slice()),
