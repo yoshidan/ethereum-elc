@@ -39,7 +39,7 @@ If you want to run the tests with the public testnet like sepolia, you need to m
 fn build_lc_registry() -> MapLightClientRegistry {
     let mut registry = MapLightClientRegistry::new();
     tendermint_lc::register_implementations(&mut registry);
-    ethereum_elc::register_implementations::<{ ethereum_elc::ibc::consensus::preset::mainnet::PRESET.SYNC_COMMITTEE_SIZE }>(&mut registry);
+    ethereum_elc::register_implementations::<{ ethereum_elc::preset::mainnet::PRESET.SYNC_COMMITTEE_SIZE }>(&mut registry);
     registry.seal().unwrap();
     registry
 }

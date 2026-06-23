@@ -124,10 +124,17 @@ impl TryFrom<RawConsensusState> for ConsensusState {
                 reason: format!("invalid storage_root length: {}", value.storage_root.len()),
             });
         }
+        let nanos: u32 =
+            timestamp
+                .nanos
+                .try_into()
+                .map_err(|_| Error::InvalidRawConsensusState {
+                    reason: format!("invalid timestamp nanos: {}", timestamp.nanos),
+                })?;
         Ok(Self {
             slot: value.slot.into(),
             storage_root: H256::from_slice(value.storage_root.as_slice()),
-            timestamp: Time::from_unix_timestamp(timestamp.seconds, timestamp.nanos as u32)?,
+            timestamp: Time::from_unix_timestamp(timestamp.seconds, nanos)?,
             current_sync_committee: PublicKey::try_from(value.current_sync_committee)?,
             next_sync_committee,
         })
