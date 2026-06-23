@@ -923,8 +923,8 @@ mod tests {
         let raw_misbehaviour = RawFinalizedHeaderMisbehaviour {
             client_id: client_id.as_str().to_string(),
             trusted_sync_committee: Some(trusted_sync_committee.into()),
-            consensus_update_1: Some(convert_consensus_update_to_proto(update_info_1)),
-            consensus_update_2: Some(convert_consensus_update_to_proto(update_info_2)),
+            consensus_update_1: Some(convert_consensus_update_to_proto(update_info_1).unwrap()),
+            consensus_update_2: Some(convert_consensus_update_to_proto(update_info_2).unwrap()),
         };
 
         let mut buf = Vec::new();

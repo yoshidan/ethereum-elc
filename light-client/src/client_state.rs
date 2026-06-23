@@ -1079,6 +1079,90 @@ mod integration_tests {
             new_consensus_state.storage_root,
             account_proof::get_storage_root()
         );
+        // Regression: `storage_root` must be the account storage root, NOT the execution
+        // state root (the two differ; using the state root breaks `verify_membership`).
+        assert_ne!(new_consensus_state.storage_root, execution_state_root);
+        // Regression: the consensus state slot must advance to the update's finalized
+        // slot. A frozen slot freezes `current_period` and breaks sync-committee period
+        // accounting across period boundaries.
+        assert_eq!(new_consensus_state.slot, finalized_slot);
+        assert_ne!(new_consensus_state.slot, consensus_state_slot);
+    }
+
+    /// Regression test for cross-period updates (#1).
+    ///
+    /// Starts from a trusted consensus state in period 0 and applies an update whose
+    /// finalized header is in period 1 (`is_next = true`). The produced consensus state
+    /// must advance to period 1. If the slot is not updated, `current_period` stays
+    /// frozen at 0 and a subsequent update fails with `UnexpectedSignaturePeriod`.
+    #[test]
+    fn test_check_header_and_update_state_period_crossing() {
+        let fixture = TestFixture::new();
+        let execution_state_root = account_proof::get_state_root();
+
+        let (update, execution_update) = fixture.gen_update(execution_state_root, 100);
+        let update_info = to_consensus_update_info(update);
+        let execution_update_info = ExecutionUpdateInfo {
+            state_root: execution_update.state_root,
+            state_root_branch: execution_update.state_root_branch,
+            block_number: execution_update.block_number,
+            block_number_branch: execution_update.block_number_branch,
+            block_hash: H256::default(),
+            block_hash_branch: vec![],
+        };
+        let finalized_slot = update_info.finalized_beacon_header().slot;
+        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+
+        // Trusted state is in PERIOD 0 (slot 32 < 64); the update's finalized header is
+        // in period 1, so the update crosses a sync committee period boundary.
+        let store_slot: U64 = 32u64.into();
+        let consensus_state = ConsensusState {
+            slot: store_slot,
+            storage_root: account_proof::get_storage_root(),
+            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
+            // `current` is unused when is_next = true; `next` must match the header committee
+            // (the period-1 committee that signed the update).
+            current_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: fixture
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+        };
+
+        let header = Header {
+            trusted_sync_committee: EthTrustedSyncCommittee {
+                height: Height::new(0, 1),
+                sync_committee: fixture.current_sync_committee().to_committee(),
+                is_next: true,
+            },
+            consensus_update: update_info,
+            execution_update: execution_update_info,
+            account_update: AccountUpdateInfo {
+                account_proof: account_proof::get_proof(),
+                account_storage_root: account_proof::get_storage_root(),
+            },
+            timestamp: new_timestamp(timestamp_secs).unwrap(),
+        };
+
+        let mut client_state = create_test_client_state_from_ctx(&fixture.ctx);
+        client_state.ibc_address = account_proof::get_address();
+
+        let now = new_timestamp(timestamp_secs + 100).unwrap();
+        let result = client_state.check_header_and_update_state(now, &consensus_state, header);
+        assert!(result.is_ok(), "cross-period update failed: {:?}", result);
+
+        let (_, new_consensus_state) = result.unwrap();
+        // The store period must advance from 0 to 1 (slot updated to the finalized slot).
+        assert_eq!(new_consensus_state.slot, finalized_slot);
+        assert_eq!(
+            new_consensus_state.current_period(&fixture.ctx),
+            1u64.into()
+        );
     }
 
     // ========================================================================

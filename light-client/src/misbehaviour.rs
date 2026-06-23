@@ -105,8 +105,14 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<Misbehaviour<SYNC_COMMITTEE_SIZE>>
         Self {
             client_id: value.client_id.as_str().to_string(),
             trusted_sync_committee: Some(value.trusted_sync_committee.into()),
-            consensus_update_1: Some(convert_consensus_update_to_proto(data.consensus_update_1)),
-            consensus_update_2: Some(convert_consensus_update_to_proto(data.consensus_update_2)),
+            consensus_update_1: Some(
+                convert_consensus_update_to_proto(data.consensus_update_1)
+                    .expect("failed to convert consensus_update_1 to proto"),
+            ),
+            consensus_update_2: Some(
+                convert_consensus_update_to_proto(data.consensus_update_2)
+                    .expect("failed to convert consensus_update_2 to proto"),
+            ),
         }
     }
 }
@@ -122,8 +128,14 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<Misbehaviour<SYNC_COMMITTEE_SIZE>>
         Self {
             client_id: value.client_id.as_str().to_string(),
             trusted_sync_committee: Some(value.trusted_sync_committee.into()),
-            consensus_update_1: Some(convert_consensus_update_to_proto(data.consensus_update_1)),
-            consensus_update_2: Some(convert_consensus_update_to_proto(data.consensus_update_2)),
+            consensus_update_1: Some(
+                convert_consensus_update_to_proto(data.consensus_update_1)
+                    .expect("failed to convert consensus_update_1 to proto"),
+            ),
+            consensus_update_2: Some(
+                convert_consensus_update_to_proto(data.consensus_update_2)
+                    .expect("failed to convert consensus_update_2 to proto"),
+            ),
         }
     }
 }
