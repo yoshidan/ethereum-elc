@@ -212,19 +212,6 @@ impl TestFixture {
             is_next,
         }
     }
-
-    /// Builds a `TrustedSyncCommittee` backed by the fixture's next committee.
-    pub fn trusted_from_next(
-        &self,
-        height: Height,
-        is_next: bool,
-    ) -> TrustedSyncCommittee<SYNC_COMMITTEE_SIZE> {
-        TrustedSyncCommittee {
-            height,
-            sync_committee: self.next_sync_committee().to_committee(),
-            is_next,
-        }
-    }
 }
 
 impl Default for TestFixture {
