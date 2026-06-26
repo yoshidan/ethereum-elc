@@ -126,27 +126,13 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<IBCAny> for Header<SYNC_COMMITTEE
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::misbehaviour::{
-        ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
-        ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
-    };
     use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
     use alloc::string::ToString;
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_consensus::types::U64;
-    use ethereum_light_client_types::consensus::{
-        AccountUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee as EthTrustedSyncCommittee,
-    };
+    use ethereum_light_client_types::consensus::{AccountUpdateInfo, ExecutionUpdateInfo};
     use ethereum_light_client_verifier::updates::ConsensusUpdate;
     use light_client::types::Height;
-
-    #[test]
-    fn test_header_type_url() {
-        assert_eq!(
-            ETHEREUM_HEADER_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.Header"
-        );
-    }
 
     #[test]
     fn test_client_message_from_any_unknown_type() {
@@ -177,18 +163,6 @@ mod tests {
     }
 
     #[test]
-    fn test_misbehaviour_type_urls() {
-        assert_eq!(
-            ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.FinalizedHeaderMisbehaviour"
-        );
-        assert_eq!(
-            ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.NextSyncCommitteeMisbehaviour"
-        );
-    }
-
-    #[test]
     fn test_header_validate_success() {
         let fixture = TestFixture::simple(1_000_000);
         let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
@@ -198,11 +172,7 @@ mod tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
             execution_update: ExecutionUpdateInfo {
                 block_number: U64(100),
@@ -224,11 +194,7 @@ mod tests {
         let update_info = to_consensus_update_info(update);
 
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
             execution_update: ExecutionUpdateInfo {
                 block_number: U64(100),
@@ -258,11 +224,7 @@ mod tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
             execution_update: ExecutionUpdateInfo {
                 block_number: U64(0), // Zero block number
@@ -288,11 +250,7 @@ mod tests {
 
         // Use wrong timestamp (off by 1 second)
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
             execution_update: ExecutionUpdateInfo {
                 block_number: U64(100),

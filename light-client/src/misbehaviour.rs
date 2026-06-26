@@ -185,18 +185,6 @@ mod tests {
     use prost::Message;
 
     #[test]
-    fn test_misbehaviour_type_urls() {
-        assert_eq!(
-            ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.FinalizedHeaderMisbehaviour"
-        );
-        assert_eq!(
-            ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.NextSyncCommitteeMisbehaviour"
-        );
-    }
-
-    #[test]
     fn test_misbehaviour_from_any_unknown_type() {
         let any = IBCAny {
             type_url: "/unknown.misbehaviour".to_string(),

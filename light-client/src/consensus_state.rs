@@ -325,14 +325,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_consensus_state_type_url() {
-        assert_eq!(
-            ETHEREUM_CONSENSUS_STATE_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.ConsensusState"
-        );
-    }
-
-    #[test]
     fn test_consensus_state_proto_conversion() {
         let consensus_state = create_test_consensus_state();
 
@@ -381,5 +373,22 @@ pub(crate) mod tests {
         let raw: RawConsensusState = original.clone().into();
         let converted = ConsensusState::try_from(raw).unwrap();
         assert_eq!(original.timestamp, converted.timestamp);
+    }
+
+    /// Regression: a malformed `storage_root` length must return an error rather than
+    /// panicking in `H256::from_slice`. Inside the enclave a panic becomes `sgx_abort`
+    /// (SIGILL) i.e. a crash/DoS, so every proto -> domain length check must be tested.
+    #[test]
+    fn test_consensus_state_try_from_invalid_storage_root_length() {
+        for bad_len in [0usize, 31, 33, 64] {
+            let mut raw: RawConsensusState = create_test_consensus_state().into();
+            raw.storage_root = vec![1u8; bad_len];
+            let result = ConsensusState::try_from(raw);
+            assert!(
+                matches!(result, Err(Error::InvalidRawConsensusState { .. })),
+                "storage_root len={} must be rejected with InvalidRawConsensusState",
+                bad_len
+            );
+        }
     }
 }

@@ -16,6 +16,10 @@ use ethereum_light_client_verifier::updates::ExecutionUpdateInfo;
 use hex_literal::hex;
 
 use crate::client_state::ClientState;
+use crate::consensus_state::ConsensusState;
+use ethereum_consensus::beacon::Slot;
+use ethereum_light_client_types::consensus::TrustedSyncCommittee;
+use light_client::types::{Height, Time};
 use std::time::Duration;
 
 /// Sync committee size from minimal preset
@@ -169,6 +173,57 @@ impl TestFixture {
             true,
             PRESET.SYNC_COMMITTEE_SIZE,
         )
+    }
+
+    /// Builds a `ConsensusState` whose `current`/`next` sync committee aggregate
+    /// pubkeys are the fixture's current/next committees (the common test case).
+    pub fn consensus_state(
+        &self,
+        slot: Slot,
+        storage_root: H256,
+        timestamp: Time,
+    ) -> ConsensusState {
+        ConsensusState {
+            slot,
+            storage_root,
+            timestamp,
+            current_sync_committee: self
+                .current_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+            next_sync_committee: self
+                .next_sync_committee()
+                .to_committee()
+                .aggregate_pubkey
+                .clone(),
+        }
+    }
+
+    /// Builds a `TrustedSyncCommittee` backed by the fixture's current committee.
+    pub fn trusted_from_current(
+        &self,
+        height: Height,
+        is_next: bool,
+    ) -> TrustedSyncCommittee<SYNC_COMMITTEE_SIZE> {
+        TrustedSyncCommittee {
+            height,
+            sync_committee: self.current_sync_committee().to_committee(),
+            is_next,
+        }
+    }
+
+    /// Builds a `TrustedSyncCommittee` backed by the fixture's next committee.
+    pub fn trusted_from_next(
+        &self,
+        height: Height,
+        is_next: bool,
+    ) -> TrustedSyncCommittee<SYNC_COMMITTEE_SIZE> {
+        TrustedSyncCommittee {
+            height,
+            sync_committee: self.next_sync_committee().to_committee(),
+            is_next,
+        }
     }
 }
 

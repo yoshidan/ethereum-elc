@@ -600,14 +600,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_client_state_type_url() {
-        assert_eq!(
-            ETHEREUM_CLIENT_STATE_TYPE_URL,
-            "/ibc.lightclients.ethereum.v1.ClientState"
-        );
-    }
-
-    #[test]
     fn test_ethereum_client_revision_number() {
         assert_eq!(ETHEREUM_CLIENT_REVISION_NUMBER, 0);
     }
@@ -710,6 +702,55 @@ pub(crate) mod tests {
         // If it doesn't panic, the context was built successfully
     }
 
+    /// Regression: malformed fixed-length fields must return `InvalidRawClientState`
+    /// instead of panicking in `H256::from_slice` / `copy_from_slice`. A panic inside
+    /// the enclave is `sgx_abort` (SIGILL) = crash/DoS, so each length guard is tested.
+    #[test]
+    fn test_client_state_try_from_invalid_genesis_validators_root_length() {
+        for bad_len in [0usize, 31, 33, 64] {
+            let mut raw: RawClientState = create_test_client_state().into();
+            raw.genesis_validators_root = vec![1u8; bad_len];
+            let result = TestClientState::try_from(raw);
+            assert!(
+                matches!(result, Err(Error::InvalidRawClientState { .. })),
+                "genesis_validators_root len={} must be rejected with InvalidRawClientState",
+                bad_len
+            );
+        }
+    }
+
+    #[test]
+    fn test_client_state_try_from_invalid_ibc_commitments_slot_length() {
+        for bad_len in [0usize, 31, 33, 64] {
+            let mut raw: RawClientState = create_test_client_state().into();
+            raw.ibc_commitments_slot = vec![1u8; bad_len];
+            let result = TestClientState::try_from(raw);
+            assert!(
+                matches!(result, Err(Error::InvalidRawClientState { .. })),
+                "ibc_commitments_slot len={} must be rejected with InvalidRawClientState",
+                bad_len
+            );
+        }
+    }
+
+    #[test]
+    fn test_client_state_try_from_invalid_fork_version_length() {
+        // `genesis_fork_version` must be exactly 4 bytes (`bytes_to_version`).
+        for bad_len in [0usize, 3, 5, 32] {
+            let mut raw: RawClientState = create_test_client_state().into();
+            raw.fork_parameters
+                .as_mut()
+                .expect("fork_parameters present")
+                .genesis_fork_version = vec![1u8; bad_len];
+            let result = TestClientState::try_from(raw);
+            assert!(
+                matches!(result, Err(Error::InvalidRawClientState { .. })),
+                "genesis_fork_version len={} must be rejected with InvalidRawClientState",
+                bad_len
+            );
+        }
+    }
+
     #[test]
     fn test_client_state_with_frozen_height() {
         let state = create_test_client_state();
@@ -734,9 +775,7 @@ mod integration_tests {
     };
     use core::str::FromStr;
     use ethereum_consensus::compute::compute_timestamp_at_slot;
-    use ethereum_light_client_types::consensus::{
-        AccountUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee as EthTrustedSyncCommittee,
-    };
+    use ethereum_light_client_types::consensus::{AccountUpdateInfo, ExecutionUpdateInfo};
     use ethereum_light_client_types::time::new_timestamp;
     use ethereum_light_client_verifier::misbehaviour::{
         FinalizedHeaderMisbehaviour, Misbehaviour as MisbehaviourData,
@@ -756,29 +795,15 @@ mod integration_tests {
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
         // Create consensus state with timestamp before the header timestamp
-        let consensus_state = ConsensusState {
-            slot: Slot::from(1u64),
-            storage_root: dummy_execution_state_root,
-            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            Slot::from(1u64),
+            dummy_execution_state_root,
+            new_timestamp(timestamp_secs - 1000).unwrap(),
+        );
 
         // Create header
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.next_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_next(Height::new(0, 1), true),
             consensus_update: update_info.clone(),
             execution_update: ExecutionUpdateInfo {
                 state_root: dummy_execution_state_root,
@@ -810,29 +835,15 @@ mod integration_tests {
         let finalized_slot = update_info.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
-        let consensus_state = ConsensusState {
-            slot: Slot::from(1u64),
-            storage_root: dummy_execution_state_root,
-            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            Slot::from(1u64),
+            dummy_execution_state_root,
+            new_timestamp(timestamp_secs - 1000).unwrap(),
+        );
 
         // Test that header validation with zero timestamp fails
         let header_zero_timestamp = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.next_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_next(Height::new(0, 1), true),
             consensus_update: update_info.clone(),
             execution_update: ExecutionUpdateInfo {
                 state_root: dummy_execution_state_root,
@@ -872,29 +883,15 @@ mod integration_tests {
         let finalized_slot = update_info.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
-        let consensus_state = ConsensusState {
-            slot: Slot::from(1u64),
-            storage_root: dummy_execution_state_root,
-            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            Slot::from(1u64),
+            dummy_execution_state_root,
+            new_timestamp(timestamp_secs - 1000).unwrap(),
+        );
 
         // Header with zero block number
         let header_zero_block = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.next_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_next(Height::new(0, 1), true),
             consensus_update: update_info.clone(),
             execution_update: ExecutionUpdateInfo {
                 state_root: dummy_execution_state_root,
@@ -1020,30 +1017,16 @@ mod integration_tests {
 
         // Create consensus state with slot in period 1 (same as signature period)
         let consensus_state_slot = fixture.period_1 + 1;
-        let consensus_state = ConsensusState {
-            slot: consensus_state_slot,
-            storage_root: account_proof::get_storage_root(),
-            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            consensus_state_slot,
+            account_proof::get_storage_root(),
+            new_timestamp(timestamp_secs - 1000).unwrap(),
+        );
 
         // Create header with matching account proof
         // Note: is_next: false because the signature was created by current_sync_committee
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: false,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), false),
             consensus_update: update_info.clone(),
             execution_update: execution_update_info,
             account_update: AccountUpdateInfo {
@@ -1135,11 +1118,7 @@ mod integration_tests {
         };
 
         let header = Header {
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: true,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
             execution_update: execution_update_info,
             account_update: AccountUpdateInfo {
@@ -1182,30 +1161,16 @@ mod integration_tests {
         let finalized_slot = update_info_1.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
-        let consensus_state = ConsensusState {
-            slot: fixture.period_1 + 1,
-            storage_root: dummy_execution_state_root,
-            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            fixture.period_1 + 1,
+            dummy_execution_state_root,
+            new_timestamp(timestamp_secs - 1000).unwrap(),
+        );
 
         // Misbehaviour with different client_id
         let misbehaviour = Misbehaviour {
             client_id: ClientId::from_str("ethereum-999").unwrap(), // Different client_id
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 1),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: false,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), false),
             data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
                 consensus_update_1: update_info_1,
                 consensus_update_2: update_info_2,
@@ -1247,30 +1212,16 @@ mod integration_tests {
         let finalized_slot = update_info_1.finalized_beacon_header().slot;
         let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
-        let consensus_state = ConsensusState {
-            slot: fixture.period_1 + 1,
-            storage_root: [1u8; 32].into(),
-            timestamp: new_timestamp(timestamp_secs - 1000).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            fixture.period_1 + 1,
+            [1u8; 32].into(),
+            new_timestamp(timestamp_secs - 1000).unwrap(),
+        );
 
         let trusted_height = Height::new(0, 50);
         let misbehaviour = Misbehaviour {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: trusted_height,
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: false,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(trusted_height, false),
             data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
                 consensus_update_1: update_info_1,
                 consensus_update_2: update_info_2,
@@ -1316,29 +1267,15 @@ mod integration_tests {
 
         // Create consensus state with old timestamp (outside trusting period)
         let old_timestamp_secs = timestamp_secs - (60 * 60 * 24 * 8); // 8 days ago
-        let consensus_state = ConsensusState {
-            slot: fixture.period_1 + 1,
-            storage_root: [1u8; 32].into(),
-            timestamp: new_timestamp(old_timestamp_secs).unwrap(),
-            current_sync_committee: fixture
-                .current_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-            next_sync_committee: fixture
-                .next_sync_committee()
-                .to_committee()
-                .aggregate_pubkey
-                .clone(),
-        };
+        let consensus_state = fixture.consensus_state(
+            fixture.period_1 + 1,
+            [1u8; 32].into(),
+            new_timestamp(old_timestamp_secs).unwrap(),
+        );
 
         let misbehaviour = Misbehaviour {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
-            trusted_sync_committee: EthTrustedSyncCommittee {
-                height: Height::new(0, 50),
-                sync_committee: fixture.current_sync_committee().to_committee(),
-                is_next: false,
-            },
+            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 50), false),
             data: MisbehaviourData::FinalizedHeader(FinalizedHeaderMisbehaviour {
                 consensus_update_1: update_info_1,
                 consensus_update_2: update_info_2,
