@@ -4,6 +4,7 @@ use crate::errors::Error;
 use crate::header::{ClientMessage, Header};
 use crate::internal_prelude::*;
 use crate::misbehaviour::Misbehaviour;
+use crate::misc::{to_lc_types_height, to_lcp_height};
 use crate::state::gen_state_id;
 use core::time::Duration;
 use ethereum_light_client_types::client_state::ClientState as EthClientState;
@@ -35,7 +36,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
     ) -> Result<Height, light_client::Error> {
         let any_client_state = ctx.client_state(client_id)?;
         let client_state = ClientState::<SYNC_COMMITTEE_SIZE>::try_from(any_client_state)?;
-        Ok(client_state.latest_height())
+        Ok(to_lcp_height(client_state.latest_height()))
     }
 
     fn create_client(
@@ -52,7 +53,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         let consensus_state = ConsensusState::try_from(any_consensus_state)?;
         consensus_state.validate()?;
 
-        let height = client_state.latest_height();
+        let height = to_lcp_height(client_state.latest_height());
         let timestamp = consensus_state.timestamp;
         let state_id = gen_state_id(client_state, consensus_state)?;
         Ok(CreateClientResult {
@@ -107,10 +108,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         let value = verify_membership(
             &client_state,
             &consensus_state,
-            client_id,
+            client_id.as_str(),
             path.clone(),
             value,
-            proof_height,
+            to_lc_types_height(proof_height),
             proof,
             &client_state.execution_verifier,
         )
@@ -145,9 +146,9 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         verify_non_membership(
             &client_state,
             &consensus_state,
-            client_id,
+            client_id.as_str(),
             path.clone(),
-            proof_height,
+            to_lc_types_height(proof_height),
             proof,
             &client_state.execution_verifier,
         )
@@ -175,7 +176,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
             ETHEREUM_CLIENT_REVISION_NUMBER,
             header.execution_update.block_number.0,
         );
-        let trusted_height = header.trusted_sync_committee.height;
+        let trusted_height = to_lcp_height(header.trusted_sync_committee.height);
 
         let any_client_state = ctx.client_state(&client_id)?;
         let any_consensus_state = ctx.consensus_state(&client_id, &trusted_height)?;
@@ -227,7 +228,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
         any_message: Any,
         misbehaviour: Misbehaviour<SYNC_COMMITTEE_SIZE>,
     ) -> Result<MisbehaviourData, light_client::Error> {
-        let trusted_height = misbehaviour.trusted_sync_committee.height;
+        let trusted_height = to_lcp_height(misbehaviour.trusted_sync_committee.height);
         let any_client_state = ctx.client_state(&client_id)?;
         let any_consensus_state = ctx.consensus_state(&client_id, &trusted_height)?;
         //Ensure client is not frozen
@@ -292,6 +293,7 @@ mod tests {
     use super::*;
     use crate::header::Header;
     use crate::misbehaviour::Misbehaviour;
+    use crate::misc::new_timestamp;
     use crate::test_utils::{
         account_proof, create_test_client_state_from_ctx, to_consensus_update_info, TestFixture,
         SYNC_COMMITTEE_SIZE,
@@ -299,7 +301,6 @@ mod tests {
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_consensus::types::H256;
     use ethereum_light_client_types::consensus::{AccountUpdateInfo, ExecutionUpdateInfo};
-    use ethereum_light_client_types::time::new_timestamp;
     use ethereum_light_client_verifier::misbehaviour::{
         FinalizedHeaderMisbehaviour, Misbehaviour as MisbehaviourData,
     };

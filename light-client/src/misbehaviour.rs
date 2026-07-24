@@ -231,7 +231,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: Height::new(0, 1),
+                height: ethereum_light_client_types::height::Height::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -259,7 +259,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: Height::new(0, 1),
+                height: ethereum_light_client_types::height::Height::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -299,7 +299,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: Height::new(0, 1),
+                height: ethereum_light_client_types::height::Height::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -338,7 +338,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: Height::new(0, 1),
+                height: ethereum_light_client_types::height::Height::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -376,7 +376,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: Height::new(0, 1),
+                height: ethereum_light_client_types::height::Height::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },

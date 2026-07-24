@@ -17,6 +17,7 @@ pub mod consensus_state;
 
 pub mod header;
 pub mod misbehaviour;
+pub mod misc;
 
 #[cfg(test)]
 pub(crate) mod test_utils;

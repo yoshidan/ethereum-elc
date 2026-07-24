@@ -2,6 +2,7 @@ use crate::consensus_state::ConsensusState;
 use crate::errors::Error;
 use crate::header::Header;
 use crate::misbehaviour::Misbehaviour;
+use crate::misc::to_lcp_height;
 use alloc::format;
 use alloc::string::ToString;
 use alloc::vec::Vec;
@@ -91,8 +92,8 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthClientState for ClientState<SYNC_COMMI
         self.frozen_height.is_some()
     }
 
-    fn latest_height(&self) -> Height {
-        Height::new(
+    fn latest_height(&self) -> ethereum_light_client_types::height::Height {
+        ethereum_light_client_types::height::Height::new(
             ETHEREUM_CLIENT_REVISION_NUMBER,
             self.latest_execution_block_number.into(),
         )
@@ -208,12 +209,16 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
 
         // check if the current timestamp is within the trusting period
         validate_state_timestamp_within_trusting_period(
-            now,
+            now.as_unix_timestamp_nanos(),
             self.trusting_period,
-            consensus_state.timestamp,
+            consensus_state.timestamp.as_unix_timestamp_nanos(),
         )?;
         // check if the header timestamp does not indicate a future time
-        validate_header_timestamp_not_future(now, self.max_clock_drift, header_timestamp)?;
+        validate_header_timestamp_not_future(
+            now.as_unix_timestamp_nanos(),
+            self.max_clock_drift,
+            header_timestamp.as_unix_timestamp_nanos(),
+        )?;
 
         let finalized_slot = consensus_update.finalized_header.0.slot;
         let new_sync_committee = compute_sync_committees(&cc, consensus_state, consensus_update)?;
@@ -260,15 +265,15 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
             .map_err(Error::Verification)?;
 
         validate_state_timestamp_within_trusting_period(
-            now,
+            now.as_unix_timestamp_nanos(),
             self.trusting_period,
-            consensus_state.timestamp,
+            consensus_state.timestamp.as_unix_timestamp_nanos(),
         )?;
 
         // found misbehaviour
         Ok(self
             .clone()
-            .with_frozen_height(misbehaviour.trusted_sync_committee.height))
+            .with_frozen_height(to_lcp_height(misbehaviour.trusted_sync_committee.height)))
     }
 }
 
@@ -769,6 +774,7 @@ mod integration_tests {
     use crate::consensus_state::ConsensusState;
     use crate::header::Header;
     use crate::misbehaviour::Misbehaviour;
+    use crate::misc::new_timestamp;
     use crate::test_utils::{
         account_proof, create_test_client_state_from_ctx, to_consensus_update_info,
         TestClientState, TestFixture,
@@ -776,7 +782,6 @@ mod integration_tests {
     use core::str::FromStr;
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_light_client_types::consensus::{AccountUpdateInfo, ExecutionUpdateInfo};
-    use ethereum_light_client_types::time::new_timestamp;
     use ethereum_light_client_verifier::misbehaviour::{
         FinalizedHeaderMisbehaviour, Misbehaviour as MisbehaviourData,
     };

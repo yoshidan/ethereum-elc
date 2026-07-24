@@ -3,6 +3,7 @@ use crate::misbehaviour::{
     Misbehaviour, ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
     ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
 };
+use crate::misc::new_timestamp;
 use bytes::Buf;
 use ethereum_consensus::context::ChainContext;
 use ethereum_consensus::types::U64;
@@ -12,7 +13,7 @@ use ethereum_light_client_types::consensus::{
     convert_proto_to_consensus_update, convert_proto_to_execution_update, AccountUpdateInfo,
     ConsensusUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee,
 };
-use ethereum_light_client_types::time::{new_timestamp, validate_header_timestamp};
+use ethereum_light_client_types::time::validate_header_timestamp;
 use ethereum_light_client_verifier::updates::ConsensusUpdate;
 use light_client::types::Time;
 use prost::Message;
@@ -76,7 +77,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
         validate_header_timestamp(
             ctx,
             self.consensus_update.finalized_beacon_header().slot,
-            self.timestamp,
+            self.timestamp.as_unix_timestamp_nanos(),
         )?;
         Ok(())
     }

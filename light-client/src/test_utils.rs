@@ -207,7 +207,7 @@ impl TestFixture {
         is_next: bool,
     ) -> TrustedSyncCommittee<SYNC_COMMITTEE_SIZE> {
         TrustedSyncCommittee {
-            height,
+            height: crate::misc::to_lc_types_height(height),
             sync_committee: self.current_sync_committee().to_committee(),
             is_next,
         }
