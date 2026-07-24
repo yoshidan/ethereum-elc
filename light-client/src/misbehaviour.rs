@@ -181,7 +181,6 @@ mod tests {
     use super::*;
     use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
     use alloc::string::ToString;
-    use light_client::types::Height;
     use prost::Message;
 
     #[test]
