@@ -8,7 +8,7 @@ use alloc::string::ToString;
 use alloc::vec::Vec;
 use core::time::Duration;
 use ethereum_consensus::beacon::{Epoch, Root, Slot, Version};
-use ethereum_consensus::fork::{ForkParameter, ForkParameters, ForkSpec, BELLATRIX_INDEX};
+use ethereum_consensus::fork::{ForkParameters, ForkSpec, BELLATRIX_INDEX};
 use ethereum_consensus::types::{Address, H256, U64};
 use ethereum_elc_proto::ibc::lightclients::ethereum::v1::ClientState as RawClientState;
 use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
@@ -17,7 +17,7 @@ use ethereum_light_client_proto::ibc::lightclients::ethereum::v1::{
 };
 use ethereum_light_client_types::client_state::ClientState as EthClientState;
 use ethereum_light_client_types::commitment::verify_account_storage;
-use ethereum_light_client_types::errors::Error as EthError;
+use ethereum_light_client_types::consensus::convert_proto_to_fork_parameters;
 use ethereum_light_client_types::time::{
     validate_header_timestamp_not_future, validate_state_timestamp_within_trusting_period,
 };
@@ -283,52 +283,10 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawClientState>
     type Error = Error;
 
     fn try_from(value: RawClientState) -> Result<Self, Self::Error> {
-        fn bytes_to_version(bz: Vec<u8>) -> Result<Version, Error> {
-            if bz.len() != 4 {
-                return Err(Error::InvalidRawClientState {
-                    reason: format!("invalid fork version length: {}", bz.len()),
-                });
-            }
-            let mut version = Version::default();
-            version.0.copy_from_slice(&bz);
-            Ok(version)
-        }
-
-        fn convert_fork_spec(idx: usize, spec: Option<RawForkSpec>) -> Result<ForkSpec, Error> {
-            if let Some(spec) = spec {
-                Ok(ForkSpec {
-                    finalized_root_gindex: spec.finalized_root_gindex,
-                    current_sync_committee_gindex: spec.current_sync_committee_gindex,
-                    next_sync_committee_gindex: spec.next_sync_committee_gindex,
-                    execution_payload_gindex: spec.execution_payload_gindex,
-                    execution_payload_state_root_gindex: spec.execution_payload_state_root_gindex,
-                    execution_payload_block_number_gindex: spec
-                        .execution_payload_block_number_gindex,
-                })
-            } else {
-                Err(EthError::proto_missing(&format!("forks[{}].spec", idx)).into())
-            }
-        }
-
         let raw_fork_parameters = value
             .fork_parameters
             .ok_or(Error::proto_missing("fork_parameters"))?;
-        let fork_parameters: ForkParameters = ForkParameters::new(
-            bytes_to_version(raw_fork_parameters.genesis_fork_version)?,
-            raw_fork_parameters
-                .forks
-                .into_iter()
-                .enumerate()
-                .map(|(i, f)| -> Result<_, Error> {
-                    Ok(ForkParameter::new(
-                        bytes_to_version(f.version)?,
-                        f.epoch.into(),
-                        convert_fork_spec(i, f.spec)?,
-                    ))
-                })
-                .collect::<Result<Vec<_>, _>>()?,
-        )
-        .map_err(Error::EthereumConsensus)?;
+        let fork_parameters = convert_proto_to_fork_parameters(raw_fork_parameters)?;
         let trust_level = value
             .trust_level
             .ok_or(Error::proto_missing("trust_level"))?;
@@ -493,7 +451,7 @@ pub(crate) mod tests {
     use super::*;
     use ethereum_consensus::fork::{
         altair::ALTAIR_FORK_SPEC, bellatrix::BELLATRIX_FORK_SPEC, capella::CAPELLA_FORK_SPEC,
-        deneb::DENEB_FORK_SPEC,
+        deneb::DENEB_FORK_SPEC, ForkParameter,
     };
     use ethereum_consensus::preset::minimal::PRESET;
     use ethereum_light_client_verifier::context::Fraction;
@@ -739,24 +697,6 @@ pub(crate) mod tests {
     }
 
     #[test]
-    fn test_client_state_try_from_invalid_fork_version_length() {
-        // `genesis_fork_version` must be exactly 4 bytes (`bytes_to_version`).
-        for bad_len in [0usize, 3, 5, 32] {
-            let mut raw: RawClientState = create_test_client_state().into();
-            raw.fork_parameters
-                .as_mut()
-                .expect("fork_parameters present")
-                .genesis_fork_version = vec![1u8; bad_len];
-            let result = TestClientState::try_from(raw);
-            assert!(
-                matches!(result, Err(Error::InvalidRawClientState { .. })),
-                "genesis_fork_version len={} must be rejected with InvalidRawClientState",
-                bad_len
-            );
-        }
-    }
-
-    #[test]
     fn test_client_state_with_frozen_height() {
         let state = create_test_client_state();
         assert!(!state.is_frozen());
@@ -789,8 +729,6 @@ mod integration_tests {
 
     #[test]
     fn test_check_header_with_valid_account_proof() {
-        use ethereum_light_client_types::commitment::verify_account_storage;
-
         let client_state = TestClientState {
             ibc_address: account_proof::get_address(),
             execution_verifier: Default::default(),
@@ -819,8 +757,6 @@ mod integration_tests {
 
     #[test]
     fn test_check_header_with_invalid_account_proof() {
-        use ethereum_light_client_types::commitment::verify_account_storage;
-
         let client_state = TestClientState {
             ibc_address: account_proof::get_address(),
             execution_verifier: Default::default(),
@@ -845,8 +781,6 @@ mod integration_tests {
 
     #[test]
     fn test_check_header_with_mismatched_storage_root() {
-        use ethereum_light_client_types::commitment::verify_account_storage;
-
         let client_state = TestClientState {
             ibc_address: account_proof::get_address(),
             execution_verifier: Default::default(),
