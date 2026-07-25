@@ -108,7 +108,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         let value = verify_membership(
             &client_state,
             &consensus_state,
-            client_id.as_str(),
             path.clone(),
             value,
             to_lc_types_height(proof_height),
@@ -146,7 +145,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> LightClient for EthereumLightClient<SYNC_
         verify_non_membership(
             &client_state,
             &consensus_state,
-            client_id.as_str(),
             path.clone(),
             to_lc_types_height(proof_height),
             proof,

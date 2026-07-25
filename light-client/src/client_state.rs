@@ -88,10 +88,6 @@ pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> EthClientState for ClientState<SYNC_COMMITTEE_SIZE> {
-    fn is_frozen(&self) -> bool {
-        self.frozen_height.is_some()
-    }
-
     fn latest_height(&self) -> ethereum_light_client_types::height::Height {
         ethereum_light_client_types::height::Height::new(
             ETHEREUM_CLIENT_REVISION_NUMBER,
@@ -112,6 +108,11 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthClientState for ClientState<SYNC_COMMI
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
+    /// Returns whether this client has been frozen due to misbehaviour.
+    pub fn is_frozen(&self) -> bool {
+        self.frozen_height.is_some()
+    }
+
     pub fn with_frozen_height(self, h: Height) -> Self {
         Self {
             frozen_height: Some(h),
