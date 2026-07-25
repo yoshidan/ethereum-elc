@@ -18,6 +18,8 @@ use ethereum_light_client_proto::ibc::lightclients::ethereum::v1::{
 use ethereum_light_client_types::client_state::ClientState as EthClientState;
 use ethereum_light_client_types::commitment::verify_account_storage;
 use ethereum_light_client_types::consensus::convert_proto_to_fork_parameters;
+use ethereum_light_client_types::errors::Error as EthError;
+use ethereum_light_client_types::height::Height as LcTypesHeight;
 use ethereum_light_client_types::time::{
     validate_header_timestamp_not_future, validate_state_timestamp_within_trusting_period,
 };
@@ -88,8 +90,8 @@ pub struct ClientState<const SYNC_COMMITTEE_SIZE: usize> {
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> EthClientState for ClientState<SYNC_COMMITTEE_SIZE> {
-    fn latest_height(&self) -> ethereum_light_client_types::height::Height {
-        ethereum_light_client_types::height::Height::new(
+    fn latest_height(&self) -> LcTypesHeight {
+        LcTypesHeight::new(
             ETHEREUM_CLIENT_REVISION_NUMBER,
             self.latest_execution_block_number.into(),
         )

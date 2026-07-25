@@ -17,6 +17,7 @@ use hex_literal::hex;
 
 use crate::client_state::ClientState;
 use crate::consensus_state::ConsensusState;
+use crate::misc::to_lc_types_height;
 use ethereum_consensus::beacon::Slot;
 use ethereum_light_client_types::consensus::TrustedSyncCommittee;
 use light_client::types::{Height, Time};
@@ -207,7 +208,7 @@ impl TestFixture {
         is_next: bool,
     ) -> TrustedSyncCommittee<SYNC_COMMITTEE_SIZE> {
         TrustedSyncCommittee {
-            height: crate::misc::to_lc_types_height(height),
+            height: to_lc_types_height(height),
             sync_committee: self.current_sync_committee().to_committee(),
             is_next,
         }

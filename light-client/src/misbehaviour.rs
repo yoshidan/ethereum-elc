@@ -181,6 +181,7 @@ mod tests {
     use super::*;
     use crate::test_utils::{to_consensus_update_info, TestFixture, SYNC_COMMITTEE_SIZE};
     use alloc::string::ToString;
+    use ethereum_light_client_types::height::Height as LcTypesHeight;
     use prost::Message;
 
     #[test]
@@ -230,7 +231,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: ethereum_light_client_types::height::Height::new(0, 1),
+                height: LcTypesHeight::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -258,7 +259,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: ethereum_light_client_types::height::Height::new(0, 1),
+                height: LcTypesHeight::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -298,7 +299,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: ethereum_light_client_types::height::Height::new(0, 1),
+                height: LcTypesHeight::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -337,7 +338,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: ethereum_light_client_types::height::Height::new(0, 1),
+                height: LcTypesHeight::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },
@@ -375,7 +376,7 @@ mod tests {
         let misbehaviour = Misbehaviour::<SYNC_COMMITTEE_SIZE> {
             client_id: ClientId::from_str("ethereum-0").unwrap(),
             trusted_sync_committee: TrustedSyncCommittee {
-                height: ethereum_light_client_types::height::Height::new(0, 1),
+                height: LcTypesHeight::new(0, 1),
                 sync_committee: fixture.current_sync_committee().to_committee(),
                 is_next: false,
             },

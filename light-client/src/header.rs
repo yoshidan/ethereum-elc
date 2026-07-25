@@ -132,6 +132,7 @@ mod tests {
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_consensus::types::U64;
     use ethereum_light_client_types::consensus::{AccountUpdateInfo, ExecutionUpdateInfo};
+    use ethereum_light_client_types::errors::Error as EthError;
     use ethereum_light_client_verifier::updates::ConsensusUpdate;
     use light_client::types::Height;
 
@@ -209,9 +210,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            Error::EthereumLightClientTypes(
-                ethereum_light_client_types::errors::Error::ZeroTimestamp
-            )
+            Error::EthereumLightClientTypes(EthError::ZeroTimestamp)
         ));
     }
 
@@ -265,9 +264,7 @@ mod tests {
         assert!(result.is_err());
         assert!(matches!(
             result.unwrap_err(),
-            Error::EthereumLightClientTypes(
-                ethereum_light_client_types::errors::Error::UnexpectedTimestamp { .. }
-            )
+            Error::EthereumLightClientTypes(EthError::UnexpectedTimestamp { .. })
         ));
     }
 }
