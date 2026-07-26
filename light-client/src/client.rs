@@ -179,7 +179,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
         let any_client_state = ctx.client_state(&client_id)?;
         let any_consensus_state = ctx.consensus_state(&client_id, &trusted_height)?;
 
-        //Ensure client is not frozen
+        // Ensure client is not frozen
         let client_state = ClientState::<SYNC_COMMITTEE_SIZE>::try_from(any_client_state)?;
         if client_state.is_frozen() {
             return Err(Error::ClientFrozen(client_id).into());
@@ -229,7 +229,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> EthereumLightClient<SYNC_COMMITTEE_SIZE> 
         let trusted_height = to_lcp_height(misbehaviour.trusted_sync_committee.height);
         let any_client_state = ctx.client_state(&client_id)?;
         let any_consensus_state = ctx.consensus_state(&client_id, &trusted_height)?;
-        //Ensure client is not frozen
+        // Ensure client is not frozen
         let client_state = ClientState::<SYNC_COMMITTEE_SIZE>::try_from(any_client_state)?;
         if client_state.is_frozen() {
             return Err(Error::ClientFrozen(client_id).into());
