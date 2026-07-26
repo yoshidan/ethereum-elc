@@ -51,8 +51,8 @@ pub enum Error {
         expected: PublicKey,
         actual: PublicKey,
     },
-    #[error("timestamp overflow")]
-    TimestampOverflow,
+    #[error("timestamp overflow: timestamp={0}")]
+    TimestampOverflow(u64),
 
     // ========================================================================
     // Header/Message errors

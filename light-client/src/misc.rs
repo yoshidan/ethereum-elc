@@ -7,7 +7,7 @@ use light_client::types::{Height, Time};
 
 /// Creates a [`Time`] from a Unix timestamp in seconds.
 pub fn new_timestamp(second: u64) -> Result<Time, Error> {
-    let second = i64::try_from(second).map_err(|_| Error::TimestampOverflow)?;
+    let second = i64::try_from(second).map_err(|_| Error::TimestampOverflow(second))?;
     Time::from_unix_timestamp(second, 0).map_err(Error::Time)
 }
 
