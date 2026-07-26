@@ -451,7 +451,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<Any> for ClientState<SYNC_COMMITT
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
-    use ethereum_light_client_types::errors::Error as EthError;
     use ethereum_consensus::fork::{
         altair::ALTAIR_FORK_SPEC, bellatrix::BELLATRIX_FORK_SPEC, capella::CAPELLA_FORK_SPEC,
         deneb::DENEB_FORK_SPEC, ForkParameter,
