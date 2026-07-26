@@ -18,7 +18,6 @@ use ethereum_light_client_proto::ibc::lightclients::ethereum::v1::{
 use ethereum_light_client_types::client_state::ClientState as EthClientState;
 use ethereum_light_client_types::commitment::verify_account_storage;
 use ethereum_light_client_types::consensus::convert_proto_to_fork_parameters;
-use ethereum_light_client_types::errors::Error as EthError;
 use ethereum_light_client_types::height::Height as LcTypesHeight;
 use ethereum_light_client_types::time::{
     validate_header_timestamp_not_future, validate_state_timestamp_within_trusting_period,
@@ -452,6 +451,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<Any> for ClientState<SYNC_COMMITT
 #[cfg(test)]
 pub(crate) mod tests {
     use super::*;
+    use ethereum_light_client_types::errors::Error as EthError;
     use ethereum_consensus::fork::{
         altair::ALTAIR_FORK_SPEC, bellatrix::BELLATRIX_FORK_SPEC, capella::CAPELLA_FORK_SPEC,
         deneb::DENEB_FORK_SPEC, ForkParameter,
