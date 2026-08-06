@@ -9,7 +9,7 @@ fn build_lc_registry() -> MapLightClientRegistry {
     let mut registry = MapLightClientRegistry::new();
     tendermint_lc::register_implementations(&mut registry);
     ethereum_elc::register_implementations::<
-        { ethereum_elc::ibc::consensus::preset::minimal::PRESET.SYNC_COMMITTEE_SIZE },
+        { ethereum_elc::preset::minimal::PRESET.SYNC_COMMITTEE_SIZE },
     >(&mut registry);
     registry.seal().unwrap();
     registry
