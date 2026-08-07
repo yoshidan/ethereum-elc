@@ -364,6 +364,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> From<ClientState<SYNC_COMMITTEE_SIZE>> fo
                     execution_payload_state_root_gindex: spec.execution_payload_state_root_gindex,
                     execution_payload_block_number_gindex: spec
                         .execution_payload_block_number_gindex,
+                    execution_block_hash_gindex: spec.execution_block_hash_gindex,
                 }),
             }
         }
@@ -821,6 +822,7 @@ mod integration_tests {
             state_root_branch: execution_update.state_root_branch,
             block_number: execution_update.block_number,
             block_number_branch: execution_update.block_number_branch,
+            rlp: vec![],
             block_hash: H256::default(),
             block_hash_branch: vec![],
         };
@@ -902,6 +904,7 @@ mod integration_tests {
             state_root_branch: execution_update.state_root_branch,
             block_number: execution_update.block_number,
             block_number_branch: execution_update.block_number_branch,
+            rlp: vec![],
             block_hash: H256::default(),
             block_hash_branch: vec![],
         };

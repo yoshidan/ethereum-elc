@@ -588,6 +588,7 @@ mod tests {
             state_root_branch: execution_update.state_root_branch,
             block_number: execution_update.block_number,
             block_number_branch: execution_update.block_number_branch,
+            rlp: vec![],
             block_hash: H256::default(),
             block_hash_branch: vec![],
         };
@@ -649,6 +650,7 @@ mod tests {
             state_root_branch: execution_update.state_root_branch,
             block_number: execution_update.block_number,
             block_number_branch: execution_update.block_number_branch,
+            rlp: vec![],
             block_hash: H256::default(),
             block_hash_branch: vec![],
         };
