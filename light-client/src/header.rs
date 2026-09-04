@@ -5,7 +5,6 @@ use crate::misbehaviour::{
 };
 use crate::misc::new_timestamp;
 use bytes::Buf;
-use ethereum_consensus::context::ChainContext;
 use ethereum_consensus::types::U64;
 use ethereum_elc_proto::ibc::lightclients::ethereum::v1::Header as RawHeader;
 use ethereum_light_client_proto::google::protobuf::Any as IBCAny;
@@ -13,7 +12,8 @@ use ethereum_light_client_types::consensus::{
     convert_proto_to_consensus_update, convert_proto_to_execution_update, AccountUpdateInfo,
     ConsensusUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee,
 };
-use ethereum_light_client_types::time::validate_header_timestamp;
+use ethereum_light_client_types::validate::validate_execution_header_timestamp;
+use ethereum_light_client_verifier::context::ChainConsensusVerificationContext;
 use ethereum_light_client_verifier::updates::ConsensusUpdate;
 use light_client::types::Time;
 use prost::Message;
@@ -52,11 +52,20 @@ pub struct Header<const SYNC_COMMITTEE_SIZE: usize> {
     pub trusted_sync_committee: TrustedSyncCommittee<SYNC_COMMITTEE_SIZE>,
     /// consensus update attested by the `trusted_sync_committee`
     pub consensus_update: ConsensusUpdateInfo<SYNC_COMMITTEE_SIZE>,
-    /// execution update based on the `consensus_update.finalized_header`
+    /// execution update for the execution block the `consensus_update.finalized_header`
+    /// references:
+    /// - pre-Gloas: the `execution_payload` carried by the finalized beacon block, i.e. the
+    ///   block produced at the finalized slot
+    /// - Gloas: the block that `signed_execution_payload_bid.message.parent_block_hash` points
+    ///   at. The payload produced at the finalized slot is revealed in a separate envelope and
+    ///   is not provable from light client data, so this lags the finalized slot by one block.
     pub execution_update: ExecutionUpdateInfo,
     /// account update based on the `execution_update.state_root`
     pub account_update: AccountUpdateInfo,
-    /// timestamp of the `consensus_update.finalized_header`
+    /// timestamp of the execution block described by `execution_update`:
+    /// - pre-Gloas: equals `compute_timestamp_at_slot(finalized_slot)`
+    /// - Gloas: the timestamp of the bid's parent block, which is neither the finalized slot's
+    ///   timestamp nor derivable from it, since slots may be skipped
     pub timestamp: Time,
 }
 
@@ -69,14 +78,17 @@ pub fn decode_header<const SYNC_COMMITTEE_SIZE: usize, B: Buf>(
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
-    pub fn validate<C: ChainContext>(&self, ctx: &C) -> Result<(), Error> {
+    pub fn validate<C: ChainConsensusVerificationContext>(&self, ctx: &C) -> Result<(), Error> {
         self.trusted_sync_committee.validate()?;
         if self.execution_update.block_number == U64(0) {
             return Err(Error::ZeroBlockNumber);
         }
-        validate_header_timestamp(
+        // Branches on the fork internally: pre-Gloas compares against the finalized slot's
+        // timestamp, Gloas against the authenticated RLP execution header.
+        validate_execution_header_timestamp(
             ctx,
             self.consensus_update.finalized_beacon_header().slot,
+            &self.execution_update,
             self.timestamp.as_unix_timestamp_nanos(),
         )?;
         Ok(())
