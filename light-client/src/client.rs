@@ -601,7 +601,6 @@ mod tests {
                 account_proof: account_proof::get_proof(),
                 account_storage_root: account_proof::get_storage_root(),
             },
-            timestamp: new_timestamp(timestamp_secs).unwrap(),
         };
 
         let mut client_state = create_test_client_state_from_ctx(&fixture.ctx);
@@ -663,7 +662,6 @@ mod tests {
                 account_proof: account_proof::get_proof(),
                 account_storage_root: account_proof::get_storage_root(),
             },
-            timestamp: new_timestamp(timestamp_secs).unwrap(),
         };
 
         let mut client_state = create_test_client_state_from_ctx(&fixture.ctx);

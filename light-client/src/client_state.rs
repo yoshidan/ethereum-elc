@@ -29,6 +29,7 @@ use ethereum_light_client_verifier::context::{
     ChainConsensusVerificationContext, Fraction, LightClientContext,
 };
 use ethereum_light_client_verifier::execution::ExecutionVerifier;
+use ethereum_light_client_verifier::updates::ConsensusUpdate;
 use light_client::types::{Any, ClientId, Height, Time};
 use prost::Message;
 use serde::{Deserialize, Serialize};
@@ -180,7 +181,7 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         header: Header<SYNC_COMMITTEE_SIZE>,
     ) -> Result<(ClientState<SYNC_COMMITTEE_SIZE>, ConsensusState), Error> {
         let cc = self.build_context(now);
-        header.validate(&cc)?;
+        header.validate()?;
 
         let trusted_sync_committee = header.trusted_sync_committee;
         let trusted_consensus_state = TrustedConsensusState::new(
@@ -191,7 +192,6 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
         let consensus_update = header.consensus_update;
         let execution_update = header.execution_update;
         let account_update = header.account_update;
-        let header_timestamp = header.timestamp;
 
         self.consensus_verifier
             .validate_updates(
@@ -201,6 +201,12 @@ impl<const SYNC_COMMITTEE_SIZE: usize> ClientState<SYNC_COMMITTEE_SIZE> {
                 &execution_update,
             )
             .map_err(Error::Verification)?;
+
+        // Derived only now: post-Gloas this reads the RLP execution header, which
+        // `validate_updates` has just bound to the consensus update.
+        let header_timestamp =
+            execution_update.timestamp(&cc, consensus_update.finalized_beacon_header().slot)?;
+        let header_timestamp = Time::from_unix_timestamp_nanos(header_timestamp)?;
 
         verify_account_storage(
             &self.execution_verifier,
@@ -847,7 +853,6 @@ mod integration_tests {
                 account_proof: account_proof::get_proof(),
                 account_storage_root: account_proof::get_storage_root(),
             },
-            timestamp: new_timestamp(timestamp_secs).unwrap(),
         };
 
         // Create client state with the correct IBC address for the account proof
@@ -940,7 +945,6 @@ mod integration_tests {
                 account_proof: account_proof::get_proof(),
                 account_storage_root: account_proof::get_storage_root(),
             },
-            timestamp: new_timestamp(timestamp_secs).unwrap(),
         };
 
         let mut client_state = create_test_client_state_from_ctx(&fixture.ctx);

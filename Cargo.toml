@@ -8,3 +8,9 @@ exclude = [
     "proto-compiler",
     "tests/enclave",
 ]
+
+# TEMPORARY: `compute_execution_header_timestamp` is not tagged yet. Replace with a
+# released rev of ethereum-light-client-types before merging.
+[patch."https://github.com/datachainlab/ethereum-light-client-types"]
+ethereum-light-client-types = { path = "../ethereum-light-client-types/type" }
+ethereum-light-client-proto = { path = "../ethereum-light-client-types/proto" }

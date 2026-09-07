@@ -3,7 +3,6 @@ use crate::misbehaviour::{
     Misbehaviour, ETHEREUM_FINALIZED_HEADER_MISBEHAVIOUR_TYPE_URL,
     ETHEREUM_NEXT_SYNC_COMMITTEE_MISBEHAVIOUR_TYPE_URL,
 };
-use crate::misc::new_timestamp;
 use bytes::Buf;
 use ethereum_consensus::types::U64;
 use ethereum_elc_proto::ibc::lightclients::ethereum::v1::Header as RawHeader;
@@ -12,7 +11,6 @@ use ethereum_light_client_types::consensus::{
     convert_proto_to_consensus_update, convert_proto_to_execution_update, AccountUpdateInfo,
     ConsensusUpdateInfo, ExecutionUpdateInfo, TrustedSyncCommittee,
 };
-use ethereum_light_client_types::validate::validate_execution_header_timestamp;
 use ethereum_light_client_verifier::context::ChainConsensusVerificationContext;
 use ethereum_light_client_verifier::updates::ConsensusUpdate;
 use light_client::types::Time;
@@ -62,11 +60,6 @@ pub struct Header<const SYNC_COMMITTEE_SIZE: usize> {
     pub execution_update: ExecutionUpdateInfo,
     /// account update based on the `execution_update.state_root`
     pub account_update: AccountUpdateInfo,
-    /// timestamp of the execution block described by `execution_update`:
-    /// - pre-Gloas: equals `compute_timestamp_at_slot(finalized_slot)`
-    /// - Gloas: the timestamp of the bid's parent block, which is neither the finalized slot's
-    ///   timestamp nor derivable from it, since slots may be skipped
-    pub timestamp: Time,
 }
 
 pub fn decode_header<const SYNC_COMMITTEE_SIZE: usize, B: Buf>(
@@ -78,20 +71,26 @@ pub fn decode_header<const SYNC_COMMITTEE_SIZE: usize, B: Buf>(
 }
 
 impl<const SYNC_COMMITTEE_SIZE: usize> Header<SYNC_COMMITTEE_SIZE> {
-    pub fn validate<C: ChainConsensusVerificationContext>(&self, ctx: &C) -> Result<(), Error> {
+    pub fn validate(&self) -> Result<(), Error> {
         self.trusted_sync_committee.validate()?;
         if self.execution_update.block_number == U64(0) {
             return Err(Error::ZeroBlockNumber);
         }
-        // Branches on the fork internally: pre-Gloas compares against the finalized slot's
-        // timestamp, Gloas against the authenticated RLP execution header.
-        validate_execution_header_timestamp(
-            ctx,
-            self.consensus_update.finalized_beacon_header().slot,
-            &self.execution_update,
-            self.timestamp.as_unix_timestamp_nanos(),
-        )?;
         Ok(())
+    }
+
+    /// Timestamp of the execution block that `execution_update` describes:
+    /// - pre-Gloas: `compute_timestamp_at_slot(finalized_slot)`
+    /// - Gloas: the timestamp of the bid's parent block, which is neither the finalized slot's
+    ///   timestamp nor derivable from it, since slots may be skipped
+    ///
+    /// Only call this once the execution update has been verified — the Gloas branch reads the
+    /// RLP header, which is bound to the consensus update by that verification.
+    pub fn timestamp<C: ChainConsensusVerificationContext>(&self, ctx: &C) -> Result<Time, Error> {
+        let nanos = self
+            .execution_update
+            .timestamp(ctx, self.consensus_update.finalized_beacon_header().slot)?;
+        Ok(Time::from_unix_timestamp_nanos(nanos)?)
     }
 }
 
@@ -110,13 +109,11 @@ impl<const SYNC_COMMITTEE_SIZE: usize> TryFrom<RawHeader> for Header<SYNC_COMMIT
         let account_update = value
             .account_update
             .ok_or(Error::proto_missing("account_update"))?;
-        let timestamp = new_timestamp(value.timestamp)?;
         Ok(Self {
             trusted_sync_committee: trusted_sync_committee.try_into()?,
             consensus_update: convert_proto_to_consensus_update(consensus_update)?,
             execution_update: convert_proto_to_execution_update(execution_update)?,
             account_update: account_update.try_into()?,
-            timestamp,
         })
     }
 }
@@ -144,7 +141,6 @@ mod tests {
     use ethereum_consensus::compute::compute_timestamp_at_slot;
     use ethereum_consensus::types::U64;
     use ethereum_light_client_types::consensus::{AccountUpdateInfo, ExecutionUpdateInfo};
-    use ethereum_light_client_types::errors::Error as EthError;
     use ethereum_light_client_verifier::updates::ConsensusUpdate;
     use light_client::types::Height;
 
@@ -181,49 +177,18 @@ mod tests {
         let fixture = TestFixture::simple(1_000_000);
         let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
 
-        let update_info = to_consensus_update_info(update);
-        let finalized_slot = update_info.finalized_beacon_header().slot;
-        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
-
         let header = Header {
             trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
-            consensus_update: update_info,
+            consensus_update: to_consensus_update_info(update),
             execution_update: ExecutionUpdateInfo {
                 block_number: U64(100),
                 ..Default::default()
             },
             account_update: AccountUpdateInfo::default(),
-            timestamp: new_timestamp(timestamp_secs).unwrap(),
         };
 
-        let result = header.validate(&fixture.ctx);
+        let result = header.validate();
         assert!(result.is_ok(), "header validation failed: {:?}", result);
-    }
-
-    #[test]
-    fn test_header_validate_zero_timestamp() {
-        let fixture = TestFixture::simple(1_000_000);
-        let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
-
-        let update_info = to_consensus_update_info(update);
-
-        let header = Header {
-            trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
-            consensus_update: update_info,
-            execution_update: ExecutionUpdateInfo {
-                block_number: U64(100),
-                ..Default::default()
-            },
-            account_update: AccountUpdateInfo::default(),
-            timestamp: Time::from_unix_timestamp_nanos(0).unwrap(),
-        };
-
-        let result = header.validate(&fixture.ctx);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            Error::EthereumLightClientTypes(EthError::ZeroTimestamp)
-        ));
     }
 
     #[test]
@@ -232,9 +197,6 @@ mod tests {
         let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
 
         let update_info = to_consensus_update_info(update);
-        let finalized_slot = update_info.finalized_beacon_header().slot;
-        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
-
         let header = Header {
             trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
@@ -243,24 +205,21 @@ mod tests {
                 ..Default::default()
             },
             account_update: AccountUpdateInfo::default(),
-            timestamp: new_timestamp(timestamp_secs).unwrap(),
         };
 
-        let result = header.validate(&fixture.ctx);
+        let result = header.validate();
         assert!(result.is_err());
         assert!(matches!(result.unwrap_err(), Error::ZeroBlockNumber));
     }
 
     #[test]
-    fn test_header_validate_unexpected_timestamp() {
+    fn test_header_timestamp_is_derived_from_the_finalized_slot_pre_gloas() {
         let fixture = TestFixture::simple(1_000_000);
         let (update, _) = fixture.gen_update([1u8; 32].into(), 100);
 
         let update_info = to_consensus_update_info(update);
         let finalized_slot = update_info.finalized_beacon_header().slot;
-        let timestamp_secs = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
 
-        // Use wrong timestamp (off by 1 second)
         let header = Header {
             trusted_sync_committee: fixture.trusted_from_current(Height::new(0, 1), true),
             consensus_update: update_info,
@@ -269,14 +228,11 @@ mod tests {
                 ..Default::default()
             },
             account_update: AccountUpdateInfo::default(),
-            timestamp: new_timestamp(timestamp_secs + 1).unwrap(), // Wrong timestamp
         };
 
-        let result = header.validate(&fixture.ctx);
-        assert!(result.is_err());
-        assert!(matches!(
-            result.unwrap_err(),
-            Error::EthereumLightClientTypes(EthError::UnexpectedTimestamp { .. })
-        ));
+        // no timestamp is supplied by the relayer; it comes from the verified finalized slot
+        let expected = compute_timestamp_at_slot(&fixture.ctx, finalized_slot).0;
+        let timestamp = header.timestamp(&fixture.ctx).unwrap();
+        assert_eq!(timestamp.as_unix_timestamp_secs(), expected);
     }
 }
