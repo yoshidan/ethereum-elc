@@ -725,7 +725,7 @@ mod integration_tests {
     use crate::misbehaviour::Misbehaviour;
     use crate::misc::new_timestamp;
     use crate::test_utils::{
-        account_proof, create_test_client_state_from_ctx, to_consensus_update_info,
+        account_proof, create_test_client_state_from_ctx, gloas_devnet, to_consensus_update_info,
         TestClientState, TestFixture,
     };
     use core::str::FromStr;
@@ -1121,5 +1121,74 @@ mod integration_tests {
             result.unwrap_err(),
             Error::EthereumLightClientTypes(_)
         ));
+    }
+
+    /// The trusted state is finalized in Fulu and every following update is finalized in
+    /// Gloas: the period 1 update (Fulu -> Gloas, a period transition since the fork activates
+    /// at a period boundary), the period 2 update (a period transition inside Gloas) and a
+    /// finality update inside period 2.
+    #[test]
+    fn test_check_header_fulu_to_gloas() {
+        let client_state = gloas_devnet::client_state();
+        let consensus_state = gloas_devnet::consensus_state();
+
+        // 1. the first update after the fork: finalized in Gloas, trusted state in Fulu
+        let header = gloas_devnet::period_1_header();
+        assert!(!header.execution_update.rlp.is_empty());
+        let now = new_timestamp(gloas_devnet::PERIOD_1_NOW).unwrap();
+        let (client_state, consensus_state) = client_state
+            .check_header_and_update_state(now, &consensus_state, header)
+            .unwrap();
+        assert_eq!(
+            consensus_state.slot,
+            U64(gloas_devnet::PERIOD_1_FINALIZED_SLOT)
+        );
+        assert_eq!(
+            consensus_state.timestamp,
+            new_timestamp(gloas_devnet::PERIOD_1_HEADER_TIMESTAMP).unwrap()
+        );
+        assert_ne!(consensus_state.storage_root, H256::default());
+        assert_eq!(
+            client_state.latest_execution_block_number,
+            U64(gloas_devnet::PERIOD_1_EXECUTION_BLOCK_NUMBER)
+        );
+
+        // 2. a period transition inside Gloas
+        let header = gloas_devnet::period_2_header();
+        let now = new_timestamp(gloas_devnet::PERIOD_2_NOW).unwrap();
+        let (client_state, consensus_state) = client_state
+            .check_header_and_update_state(now, &consensus_state, header)
+            .unwrap();
+        assert_eq!(
+            consensus_state.slot,
+            U64(gloas_devnet::PERIOD_2_FINALIZED_SLOT)
+        );
+        assert_eq!(
+            consensus_state.timestamp,
+            new_timestamp(gloas_devnet::PERIOD_2_HEADER_TIMESTAMP).unwrap()
+        );
+        assert_eq!(
+            client_state.latest_execution_block_number,
+            U64(gloas_devnet::PERIOD_2_EXECUTION_BLOCK_NUMBER)
+        );
+
+        // 3. a finality update inside the same period
+        let header = gloas_devnet::steady_header();
+        let now = new_timestamp(gloas_devnet::STEADY_NOW).unwrap();
+        let (client_state, consensus_state) = client_state
+            .check_header_and_update_state(now, &consensus_state, header)
+            .unwrap();
+        assert_eq!(
+            consensus_state.slot,
+            U64(gloas_devnet::STEADY_FINALIZED_SLOT)
+        );
+        assert_eq!(
+            consensus_state.timestamp,
+            new_timestamp(gloas_devnet::STEADY_HEADER_TIMESTAMP).unwrap()
+        );
+        assert_eq!(
+            client_state.latest_execution_block_number,
+            U64(gloas_devnet::STEADY_EXECUTION_BLOCK_NUMBER)
+        );
     }
 }
