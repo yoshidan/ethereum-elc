@@ -502,6 +502,21 @@ dependencies = [
  "hex",
  "milagro_bls",
  "primitive-types",
+ "serde",
+ "sha2 0.10.8",
+ "ssz-rs",
+ "ssz-rs-derive",
+]
+
+[[package]]
+name = "ethereum-consensus"
+version = "0.1.0"
+source = "git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.3.0#0fbf1f4f12e36c17b5f4b7ae0067a76e9a26d985"
+dependencies = [
+ "displaydoc",
+ "hex",
+ "milagro_bls",
+ "primitive-types",
  "rs_merkle",
  "serde",
  "sha2 0.10.8",
@@ -514,11 +529,11 @@ name = "ethereum-elc"
 version = "0.1.0"
 dependencies = [
  "bytes",
- "ethereum-consensus",
+ "ethereum-consensus 0.1.0 (git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.3.0)",
  "ethereum-elc-proto",
  "ethereum-light-client-proto",
  "ethereum-light-client-types",
- "ethereum-light-client-verifier",
+ "ethereum-light-client-verifier 0.1.0 (git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.3.0)",
  "hex-literal",
  "light-client",
  "prost",
@@ -551,9 +566,9 @@ name = "ethereum-light-client-types"
 version = "0.2.1"
 source = "git+https://github.com/datachainlab/ethereum-light-client-types?rev=v0.3.0-rc8#440b4e3574048d1deef1f0b6699f85e2ff8e7206"
 dependencies = [
- "ethereum-consensus",
+ "ethereum-consensus 0.1.0 (git+https://github.com/yoshidan/ethereum-light-client-rs?rev=cb4f62bb86a143556068c0be89bf62ac5f54c75a)",
  "ethereum-light-client-proto",
- "ethereum-light-client-verifier",
+ "ethereum-light-client-verifier 0.1.0 (git+https://github.com/yoshidan/ethereum-light-client-rs?rev=cb4f62bb86a143556068c0be89bf62ac5f54c75a)",
  "hex",
  "rlp",
  "serde",
@@ -568,7 +583,21 @@ version = "0.1.0"
 source = "git+https://github.com/yoshidan/ethereum-light-client-rs?rev=cb4f62bb86a143556068c0be89bf62ac5f54c75a#cb4f62bb86a143556068c0be89bf62ac5f54c75a"
 dependencies = [
  "displaydoc",
- "ethereum-consensus",
+ "ethereum-consensus 0.1.0 (git+https://github.com/yoshidan/ethereum-light-client-rs?rev=cb4f62bb86a143556068c0be89bf62ac5f54c75a)",
+ "patricia-merkle-trie",
+ "primitive-types",
+ "rlp",
+ "serde",
+ "trie-db",
+]
+
+[[package]]
+name = "ethereum-light-client-verifier"
+version = "0.1.0"
+source = "git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.3.0#0fbf1f4f12e36c17b5f4b7ae0067a76e9a26d985"
+dependencies = [
+ "displaydoc",
+ "ethereum-consensus 0.1.0 (git+https://github.com/datachainlab/ethereum-light-client-rs?rev=v0.3.0)",
  "patricia-merkle-trie",
  "primitive-types",
  "rand",
